@@ -416,7 +416,6 @@ const playSong = async (song) => {
         currentSong.value = structuredClone(song);
 
         // 应用响度规格化（如果已启用 Web Audio）
-        toggleLoudnessNormalization(true)
         if (song.loudnessNormalization) {
             console.log('[PlayerControl] 应用响度规格化:', song.loudnessNormalization);
             applyLoudnessNormalization(song.loudnessNormalization);
