@@ -73,7 +73,7 @@ export default function useSongQueue(t, musicQueueStore) {
                 img: img,
                 author: author,
                 timeLength: response.timeLength,
-                url: response.url[0],
+                url: response.url[1],
                 // 响度规格化参数
                 loudnessNormalization: {
                     volume: response.volume || 0,
