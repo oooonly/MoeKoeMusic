@@ -57,7 +57,7 @@ export default function useSongQueue(t, musicQueueStore) {
 
             // 设置URL
             if (response.url && response.url[1]) {
-                currentSong.value.url = `${import.meta.env.VITE_APP_API_URL}/song/raw?targetUrl=${response.url[1]}`;
+                currentSong.value.url = `${import.meta.env.VITE_APP_API_URL}song/raw?targetUrl=${response.url[1]}`;
                 console.log('[SongQueue] 获取到音乐URL:', currentSong.value.url);
             } else {
                 console.error('[SongQueue] 未获取到音乐URL');
@@ -73,7 +73,7 @@ export default function useSongQueue(t, musicQueueStore) {
                 img: img,
                 author: author,
                 timeLength: response.timeLength,
-                url: `${import.meta.env.VITE_APP_API_URL}/song/raw?targetUrl=${response.url[1]}`,
+                url: `${import.meta.env.VITE_APP_API_URL}song/raw?targetUrl=${response.url[1]}`,
                 // 响度规格化参数
                 loudnessNormalization: {
                     volume: response.volume || 0,
