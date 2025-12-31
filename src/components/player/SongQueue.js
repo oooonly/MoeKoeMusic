@@ -56,8 +56,8 @@ export default function useSongQueue(t, musicQueueStore) {
             }
 
             // 设置URL
-            if (response.url && response.url[0]) {
-                currentSong.value.url = response.url[0];
+            if (response.url && response.url[1]) {
+                currentSong.value.url = response.url[1];
                 console.log('[SongQueue] 获取到音乐URL:', currentSong.value.url);
             } else {
                 console.error('[SongQueue] 未获取到音乐URL');
