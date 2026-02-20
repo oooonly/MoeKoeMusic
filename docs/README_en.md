@@ -18,7 +18,8 @@ An open-source, concise, and aesthetically pleasing third-party client for KuGou
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_tw.md" target="blank"><strong>🇨🇳 繁体中文</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ja.md" target="blank"><strong>🇯🇵 日本語</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_en.md" target="blank"><strong>🇺🇸 English</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ko.md" target="blank"><strong>🇰🇷 한국어</strong></a>
+    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ko.md" target="blank"><strong>🇰🇷 한국어</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
+    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ru.md" target="blank"><strong>🇷🇺 Русский</strong></a>
     <br />
     <br />
   </p>
@@ -50,11 +51,10 @@ I said on my personal introduction page that I particularly enjoy listening to m
 -  🛠  More features under development
 
 ## 📢 Todo List
-- [ ]  📺  Support MV playback
+- [x]  📺  Support MV playback
 - [x]  🌚 Light/Dark Mode  Automatic switching
 - [x]  👆  Support Touch Bar
 - [x]  🖥️  Support PWA, you can click on the right side of the address bar in Chrome/Edge ➕  Install to computer
-- [ ]  🟥  Supports Last.fm Scrobble
 - [ ]  🎧  Support Mpris
 - [x]  ⌨️   Global shortcut keys
 - [x]  🤟  Multi language support
@@ -64,16 +64,68 @@ I said on my personal introduction page that I particularly enjoy listening to m
 
 Please check the  for the update log [Commits](https://github.com/iAJue/MoeKoeMusic/commits/main/)
 
-##  📦 Installation
+## 📦️ Installation
 
-Accessing for this project [Release](https://github.com/iAJue/MoeKoeMusic/releases)Download the installation package from the page.
+### 1. Client Installation
+
+Visit the [Releases](https://github.com/iAJue/MoeKoeMusic/releases) page of this project to download the installation package.
+
+### 2. Web Installation (Docker)
+
+* Note: Please open the corresponding port on the server after deployment, or use a reverse proxy for domain access.
+
+  1. Method 1: Quick Start (Recommended)
+
+  ```
+  git clone https://github.com/iAJue/MoeKoeMusic.git
+  cd MoeKoeMusic
+  git submodule update --init --recursive
+  docker compose up -d &
+  ```
+
+  2. ~~Method 2: One-click installation using docker-compose (image not yet uploaded officially)~~
+  
+  ```
+  docker run -d --name MoeKoeMusic -p 8080:8080 -p 6521:6521 -e PORT=6521 -e platform=lite iajue/moekoe-music:latest
+  ```
+
+  3. Method 3: Baota Container Orchestration
+
+  * Remote image, version may be behind the official
+  
+  ```
+  version: '3.3'
+  
+  services:
+    moekoe-music:
+    # Image address
+    image: registry.cn-wulanchabu.aliyuncs.com/youngxj/moekoe-music:latest
+    container_name: moekoe-music # Container name
+    restart: unless-stopped # Auto restart
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - PORT=6521
+      - platform=lite
+    ports: # Port mapping
+      - "8080:8080"  # Frontend service
+      - "6521:6521"  # API service
+  
+  ```
+  
+  Copy the content above and paste it into the container orchestration in the Baota panel, name the orchestration as MoeKoeMusic, and click deploy.
+### 3. One-Click Deployment
+[![使用 EdgeOne Pages 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?template=https://github.com/iAJue/moekoemusic&install-command=npm%20install&output-directory=dist&root-directory=.%2F&build-command=npm%20run%20build&env=VITE_APP_API_URL)
+
+You need to fill in your own API address in the environment variable VITE_APP_API_URL.
 
 ##  ⚙️  development
 
 1. Clone this repository
 
 ```sh
-git clone  https://github.com/iAJue/MoeKoeMusic.git
+git clone --recurse-submodules https://github.com/iAJue/MoeKoeMusic.git
 ```
 
 2. Enter the directory and install dependencies
@@ -227,7 +279,6 @@ Based on [MIT license](https://opensource.org/licenses/MIT)License to open sourc
 ## 👍 Inspiration source
 
 The API source code comes from [MakcRe/KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi ) 
-In order to avoid disrupting the structure of the original project and facilitate later updates and iterations, the API has not been highly integrated~~ Actually, it's to save time~~)
 
 - [Apple Music]( https://music.apple.com )
 - [YouTube Music]( https://music.youtube.com )

@@ -16,7 +16,8 @@
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_tw.md" target="blank"><strong>🇨🇳 繁体中文</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ja.md" target="blank"><strong>🇯🇵 日本語</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_en.md" target="blank"><strong>🇺🇸 English</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ko.md" target="blank"><strong>🇰🇷 한국어</strong></a>
+    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ko.md" target="blank"><strong>🇰🇷 한국어</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
+    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ru.md" target="blank"><strong>🇷🇺 Русский</strong></a>
     <br />
     <br />
   </p>
@@ -48,11 +49,10 @@
 - 🛠 更多特性开发中
 
 ## 📢 Todo List
-- [ ] 📺 支持 MV 播放
+- [x] 📺 支持 MV 播放
 - [x] 🌚 Light/Dark Mode 自动切换
 - [x] 👆 支持 Touch Bar
 - [x] 🖥️ 支持 PWA，可在 Chrome/Edge 里点击地址栏右边的 ➕ 安装到电脑
-- [ ] 🟥 支持 Last.fm Scrobble
 - [ ] 🎧 支持 Mpris
 - [x] ⌨️ 全局快捷键
 - [x] 🤟 多语言支持
@@ -77,13 +77,14 @@
     ```
     git clone https://github.com/iAJue/MoeKoeMusic.git
     cd MoeKoeMusic
+    git submodule update --init --recursive
     docker compose up -d &
     ```
 
     2. ~~方式二：使用docker-compose一键安装 （镜像暂未上传官方）~~
     
     ```
-    docker run -d --name MoeKoeMusic -p 8080:8080 iajue/moekoe-music:latest
+    docker run -d --name MoeKoeMusic -p 8080:8080 -p 6521:6521 -e PORT=6521 -e platform=lite iajue/moekoe-music:latest
     ```
 
     3. 方式三：宝塔容器编排
@@ -102,6 +103,9 @@
         build:
           context: .
           dockerfile: Dockerfile
+        environment:
+          - PORT=6521
+          - platform=lite
         ports: # 端口映射
           - "8080:8080"  # 前端服务
           - "6521:6521"  # 接口服务
@@ -120,7 +124,7 @@
 1. 克隆本仓库
 
 ```sh
-git clone https://github.com/iAJue/MoeKoeMusic.git
+git clone --recurse-submodules https://github.com/iAJue/MoeKoeMusic.git
 ```
 
 2. 进入目录并安装依赖
@@ -233,8 +237,8 @@ npm run build
    ```
    - ARM64架构(ARM v8+): 
    ```
-   npm run build:api:linux-aarch64 //编译API
-   npm run electron:build:linux-aarch64 //编译主程序
+   npm run build:api:linux-arm64 //编译API
+   npm run electron:build:linux-arm64 //编译主程序
    ```
 
 #### 4. 打包所有平台
@@ -278,7 +282,6 @@ npm run build
 ## 👍 灵感来源
 
 API 源代码来自 [MakcRe/KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi) 
-(为了不破坏原项目的结构和后期更新迭代方便,API未做高度集成.~~其实是图省事~~)
 
 - [Apple Music](https://music.apple.com)
 - [YouTube Music](https://music.youtube.com)

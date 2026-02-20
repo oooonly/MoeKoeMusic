@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <div class="settings-page">
         <div class="settings-sidebar">
             <div v-for="(section, sectionIndex) in settingSections" :key="sectionIndex" 
@@ -15,7 +15,7 @@
                  class="setting-section" 
                  v-show="activeTab === sectionIndex">
                 <h3>{{ section.title }}</h3>
-                <ExtensionManager v-if="section.title === '插件'" />
+                <ExtensionManager v-if="section.title === t('cha-jian')" />
                 <div v-else class="settings-cards">
                     <div v-for="(item, itemIndex) in section.items" :key="itemIndex"
                         class="setting-card" @click="item.action ? item.action(item.helpLink) : openSelection(item.key, item.helpLink)">
@@ -37,7 +37,7 @@
             <div class="reset-settings-container">
                 <button @click="openResetConfirmation" class="reset-settings-button">
                     <i class="fas fa-sync-alt"></i>
-                    恢复出厂设置
+                    {{ $t('hui-fu-chu-chang-she-zhi') }}
                 </button>
             </div>
             <div class="version-info">
@@ -52,39 +52,39 @@
                     v-if="currentHelpLink"
                     class="help-link"
                     @click="openHelpLink"
-                    title="帮助"
-                    aria-label="帮助"
+                    :title="$t('bang-zhu')"
+                    :aria-label="$t('bang-zhu')"
                 >
                     <i class="fas fa-question-circle"></i>
                 </a>
                 <h3>{{ selectionTypeMap[selectionType].title }}</h3>
-                <ul v-if="selectionType !== 'font'">
+                <ul v-if="selectionType !== 'font' && selectionType !== 'audioOutputDevice'">
                     <li v-for="option in selectionTypeMap[selectionType].options" :key="option" @click="selectOption(option)">
+                        {{ option.displayText }}
+                    </li>
+                </ul>
+
+                <ul v-else-if="selectionType === 'audioOutputDevice'">
+                    <li v-if="audioOutputDevicesLoading">正在获取设备列表...</li>
+                    <li v-else-if="audioOutputDeviceOptions.length === 0">未检测到音频输出设备</li>
+                    <li v-else v-for="option in audioOutputDeviceOptions" :key="option.value" @click="selectOption(option)">
                         {{ option.displayText }}
                     </li>
                 </ul>
 
                 <div v-if="selectionType === 'font'" class="api-settings-container" @focusout="handleFontFocusOut">
                     <div class="api-setting-item">
-                        <label>字体URL地址</label>
-                        <input type="text" v-model="fontUrlInput" class="api-input" placeholder="请输入字体URL地址" />
+                        <label>{{ $t('zi-ti-url-di-zhi') }}</label>
+                        <input type="text" v-model="fontUrlInput" class="api-input" :placeholder="$t('qing-shu-ru-zi-ti-url-di-zhi')" />
                     </div>
                     <div class="api-setting-item">
-                        <label>字体名称</label>
-                        <input type="text" v-model="fontFamilyInput" class="api-input" placeholder="请输入字体名称" />
+                        <label>{{ $t('zi-ti-ming-cheng') }}</label>
+                        <input type="text" v-model="fontFamilyInput" class="api-input" :placeholder="$t('qing-shu-ru-zi-ti-ming-cheng')" />
                     </div>
-                </div>
-
-                <div v-if="selectionType === 'quality'" class="compatibility-option">
-                    <label>
-                        <input type="checkbox" v-model="qualityCompatibilityMode" />
-                        兼容模式(mp3格式)
-                        <div class="compatibility-hint">如果高音质播放失败，请开启此选项</div>
-                    </label>
                 </div>
 
                 <div v-if="selectionType === 'highDpi'" class="scale-slider-container">
-                    <div class="scale-slider-label">缩放因子: {{ dpiScale }} <span class="scale-slider-hint">调整后需要重启应用生效</span></div>
+                    <div class="scale-slider-label">{{ $t('suo-fang-yin-zi') }}: {{ dpiScale }} <span class="scale-slider-hint">{{ $t('tiao-zheng-hou-xu-zhong-qi') }}</span></div>
                     <div class="scale-slider-wrapper">
                         <input
                             type="range"
@@ -105,43 +105,68 @@
 
                 <div v-if="selectionType === 'apiMode' && selectedSettings.apiMode.value === 'on'" class="api-settings-container">
                     <div class="api-setting-item">
-                        <label>API 地址</label>
-                        <input type="text" value="http://127.0.0.1:6521" readonly class="api-input" />
+                        <label>{{ $t('api-di-zhi') }}</label>
+                        <input type="text" :value="defaultApiBaseUrl" readonly class="api-input" />
                     </div>
                     <div class="api-setting-item">
-                        <label>WebSocket 地址</label>
+                        <label>{{ $t('websocket-di-zhi') }}</label>
                         <input type="text" value="ws://127.0.0.1:6520" readonly class="api-input" />
                     </div>
                     <div class="api-hint">
-                        这些是默认的 API 地址，当前版本不支持自定义修改
+                        {{ $t('mo-ren-api-ti-shi') }}
+                    </div>
+                </div>
+                <div v-if="selectionType === 'apiBaseUrlMode' && selectedSettings.apiBaseUrlMode.value === 'custom'" class="api-settings-container">
+                    <div class="api-setting-item">
+                        <input
+                            type="text"
+                            v-model="apiBaseUrlForm.url"
+                            class="api-input"
+                            :placeholder="`RPC地址（留空使用默认：${defaultApiBaseUrl}）`"
+                        />
+                    </div>
+                    <div class="proxy-actions">
+                        <button
+                            @click="testApiBaseUrl"
+                            :disabled="apiBaseUrlForm.testing"
+                            class="test-button"
+                        >
+                            {{ apiBaseUrlForm.testing ? $t('zheng-zai-ce-shi') : $t('ce-shi-lian-jie') }}
+                        </button>
+                        <button class="primary" @click="saveApiBaseUrl">
+                            {{ $t('bao-cun-she-zhi-an-niu') }}
+                        </button>
+                    </div>
+                    <div v-if="apiBaseUrlForm.testResult" :class="['proxy-test-result', apiBaseUrlForm.testStatus]">
+                        {{ apiBaseUrlForm.testResult }}
                     </div>
                 </div>
                 <div v-if="selectionType === 'proxy' && selectedSettings.proxy.value === 'on'" class="proxy-settings-container">
                     <div class="api-setting-item">
-                        <input 
-                            type="text" 
-                            v-model="proxyForm.url" 
-                            class="api-input" 
-                            placeholder="请输入http或https代理地址，如: http://127.0.0.1:7890" 
+                        <input
+                            type="text"
+                            v-model="proxyForm.url"
+                            class="api-input"
+                            :placeholder="$t('dai-li-placeholder')"
                         />
                     </div>
                     <div class="proxy-actions">
-                        <button 
-                            @click="testProxyConnection" 
+                        <button
+                            @click="testProxyConnection"
                             :disabled="proxyForm.testing"
                             class="test-button"
                         >
-                            {{ proxyForm.testing ? '正在测试...' : '测试连接' }}
+                            {{ proxyForm.testing ? $t('zheng-zai-ce-shi') : $t('ce-shi-lian-jie') }}
                         </button>
                         <button class="primary" @click="saveProxy">
-                            保存设置
+                            {{ $t('bao-cun-she-zhi-an-niu') }}
                         </button>
                     </div>
                     <div v-if="proxyForm.testResult" :class="['proxy-test-result', proxyForm.testStatus]">
                         {{ proxyForm.testResult }}
                     </div>
                 </div>
-                <button @click="closeSelection">{{ $t('guan-bi') }}</button>
+                <button @click="closeSelection">{{ $t('guan-bi-an-niu') }}</button>
             </div>
         </div>
 
@@ -155,7 +180,7 @@
                         <div class="shortcut-input"
                              @click="startRecording(key)"
                              :class="{ 'recording': recordingKey === key }">
-                            {{ shortcuts[key] || '点击设置快捷键' }}
+                            {{ shortcuts[key] || $t('dian-ji-she-zhi-kuai-jie-jian') }}
                             <div v-if="shortcuts[key]"
                                  class="clear-shortcut"
                                  @click.stop="clearShortcut(key)">
@@ -178,6 +203,8 @@ import { ref, onMounted, getCurrentInstance, onUnmounted, computed, reactive } f
 import { useI18n } from 'vue-i18n';
 import { MoeAuthStore } from '../stores/store';
 import ExtensionManager from '@/components/ExtensionManager.vue';
+import { requestMicrophonePermission } from '../utils/utils';
+import { DEFAULT_API_BASE_URL, validateApiBaseUrl, testApiBaseUrl as testApiBaseUrlRequest } from '@/utils/apiBaseUrl';
 
 const MoeAuth = MoeAuthStore();
 const { t } = useI18n();
@@ -185,6 +212,7 @@ const { proxy } = getCurrentInstance();
 const appVersion = ref('');
 const platform = ref('');
 const activeTab = ref(0);
+const defaultApiBaseUrl = DEFAULT_API_BASE_URL;
 
 // 设置配置
 const selectedSettings = ref({
@@ -198,25 +226,28 @@ const selectedSettings = ref({
     statusBarLyrics: { displayText: t('guan-bi'), value: 'off' },
     lyricsFontSize: { displayText: t('zhong'), value: '24px' },
     lyricsTranslation: { displayText: t('da-kai'), value: 'on' },
-    lyricsAlign: { displayText: '居中', value: 'center' },
-    font: { displayText: '默认字体', value: '' },
-    fontUrl: { displayText: '默认字体', value: '' },
+    lyricsAlign: { displayText: t('ju-zhong'), value: 'center' },
+    font: { displayText: t('mo-ren-zi-ti'), value: '' },
+    fontUrl: { displayText: t('mo-ren-zi-ti'), value: '' },
     greetings: { displayText: t('kai-qi'), value: 'on' },
     gpuAcceleration: { displayText: t('guan-bi'), value: 'off' },
     minimizeToTray: { displayText: t('da-kai'), value: 'on' },
     highDpi: { displayText: t('guan-bi'), value: 'off' },
-    qualityCompatibility: { displayText: t('guan-bi'), value: 'off' },
     dpiScale: { displayText: '1.0', value: '1.0' },
     apiMode: { displayText: t('guan-bi'), value: 'off' },
     touchBar: { displayText: t('guan-bi'), value: 'off' },
     autoStart: { displayText: t('guan-bi'), value: 'off' },
     startMinimized: { displayText: t('guan-bi'), value: 'off' },
     preventAppSuspension: { displayText: t('guan-bi'), value: 'off' },
-    networkMode: { displayText: '主网', value: 'mainnet' },
+    networkMode: { displayText: t('zhu-wang'), value: 'mainnet' },
     proxy: { displayText: t('guan-bi'), value: 'off' },
     proxyUrl: { displayText: '', value: '' },
-    dataSource: { displayText: '概念版', value: 'concept' },
+    apiBaseUrlMode: { displayText: '默认', value: 'default' },
+    apiBaseUrl: { displayText: '', value: '' },
+    dataSource: { displayText: t('gai-nian-ban-xuan-xiang'), value: 'concept' },
     loudnessNormalization: { displayText: t('guan-bi'), value: 'off' },
+    pauseOnAudioOutputChange: { displayText: t('guan-bi'), value: 'off' },
+    audioOutputDevice: { displayText: '默认', value: 'default' },
 });
 
 // 设置分区配置
@@ -245,7 +276,7 @@ const settingSections = computed(() => [
             },
             {
                 key: 'font',
-                label: '字体设置',
+                label: t('zi-ti-she-zhi'),
                 showRefreshHint: true,
                 refreshHintText: t('shua-xin-hou-sheng-xiao'),
                 helpLink:'https://music.moekoe.cn/guide/font-settings.html'
@@ -262,10 +293,22 @@ const settingSections = computed(() => [
             },
             {
                 key: 'loudnessNormalization',
-                label: '平衡音频响度',
+                label: t('ping-heng-yin-pin-xiang-du'),
                 icon: '🎚️ ',
                 showRefreshHint: true,
-                refreshHintText: '开启需刷新页面后生效'
+                refreshHintText: t('shua-xin-hou-sheng-xiao')
+            },
+            {
+                key: 'pauseOnAudioOutputChange',
+                label: '输出设备变化自动暂停',
+                icon: '🎧 ',
+                helpLink:'https://music.moekoe.cn/guide/auto-pause-on-output-device-change.html'
+            },
+            {
+                key: 'audioOutputDevice',
+                label: '音频输出设备',
+                icon: '🔊 ',
+                helpLink:'https://music.moekoe.cn/guide/audio-output-device.html'
             },
             {
                 key: 'greetings',
@@ -274,7 +317,7 @@ const settingSections = computed(() => [
             },
             {
                 key: 'dataSource',
-                label: '数据源',
+                label: t('shu-ju-yuan'),
                 icon: '🔌 ',
                 showRefreshHint: true,
                 refreshHintText: t('zhong-qi-hou-sheng-xiao'),
@@ -303,22 +346,22 @@ const settingSections = computed(() => [
             },
             {
                 key: 'statusBarLyrics',
-                label: '状态栏歌词',
+                label: t('zhuang-tai-lan-ge-ci'),
                 showRefreshHint: true,
                 refreshHintText: t('zhong-qi-hou-sheng-xiao')
             },
             {
                 key: 'lyricsTranslation',
-                label: '歌词翻译'
+                label: t('ge-ci-fan-yi')
             },
             {
                 key: 'lyricsAlign',
-                label: '对齐方式',
+                label: t('dui-qi-fang-shi'),
             }
         ]
     },
     {
-        title: '插件',
+        title: t('cha-jian'),
         items: []
     },
     {
@@ -342,31 +385,38 @@ const settingSections = computed(() => [
             },
             {
                 key: 'autoStart',
-                label: '开机自启动'
+                label: t('kai-ji-zi-qi-dong')
             },
             {
                 key: 'networkMode',
-                label: '网络模式',
+                label: t('wang-luo-mo-shi'),
                 showRefreshHint: true,
-                refreshHintText: '重启后生效',
+                refreshHintText: t('zhong-qi-hou-sheng-xiao'),
                 helpLink:'https://music.moekoe.cn/guide/network-modes.html'
             },
             {
                 key: 'startMinimized',
-                label: '启动时最小化'
+                label: t('qi-dong-shi-zui-xiao-hua')
             },
             {
                 key: 'preventAppSuspension',
-                label: '阻止系统休眠',
+                label: t('zu-zhi-xi-tong-xiu-mian'),
                 showRefreshHint: true,
                 refreshHintText: t('zhong-qi-hou-sheng-xiao')
             },
             {
                 key: 'apiMode',
-                label: 'API模式',
+                label: t('api-mo-shi'),
                 showRefreshHint: true,
                 refreshHintText: t('zhong-qi-hou-sheng-xiao')
             },
+             {
+                key: 'apiBaseUrlMode',
+                label: 'RPC地址',
+                showRefreshHint: true,
+                refreshHintText: t('shua-xin-hou-sheng-xiao'),
+                helpLink:'https://music.moekoe.cn/guide/rpc-api-base-url.html'
+             },
             {
                 key: 'touchBar',
                 label: 'TouchBar',
@@ -387,7 +437,7 @@ const settingSections = computed(() => [
             },
             {
                 key: 'proxy',
-                label: '网络代理',
+                label: t('wang-luo-dai-li'),
                 showRefreshHint: true,
                 refreshHintText: t('zhong-qi-hou-sheng-xiao'),
                 helpLink:'https://music.moekoe.cn/guide/proxy-settings.html'
@@ -402,7 +452,7 @@ const getSectionIcon = (title) => {
         [t('jie-mian')]: 'fas fa-palette',
         [t('sheng-yin')]: 'fas fa-volume-up',
         [t('ge-ci')]: 'fas fa-music',
-        '插件': 'fas fa-puzzle-piece',
+        [t('cha-jian')]: 'fas fa-puzzle-piece',
         [t('xi-tong')]: 'fas fa-cog'
     };
     return iconMap[title] || 'fas fa-cog';
@@ -418,6 +468,8 @@ const getItemIcon = (key) => {
         'font': 'fas fa-font',
         'quality': 'fas fa-headphones',
         'loudnessNormalization': 'fas fa-sliders-h',
+        'pauseOnAudioOutputChange': 'fas fa-exchange-alt',
+        'audioOutputDevice': 'fas fa-volume-up',
         'greetings': 'fas fa-comment',
         'lyricsBackground': 'fas fa-image',
         'lyricsFontSize': 'fas fa-text-height',
@@ -432,6 +484,7 @@ const getItemIcon = (key) => {
         'startMinimized': 'fas fa-compress',
         'preventAppSuspension': 'fas fa-clock',
         'apiMode': 'fas fa-code',
+        'apiBaseUrlMode': 'fas fa-link',
         'touchBar': 'fas fa-tablet-alt',
         'shortcuts': 'fas fa-keyboard',
         'pwa': 'fas fa-mobile-alt',
@@ -452,8 +505,9 @@ const selectionTypeMap = {
         title: t('xuan-ze-yu-yan'),
         options: [
             { displayText: '🇨🇳 简体中文', value: 'zh-CN' },
-            { displayText: '🇨🇳 繁体中文', value: 'zh-TW' },
+            { displayText: '🇨🇳 繁體中文', value: 'zh-TW' },
             { displayText: '🇺🇸 English', value: 'en' },
+            { displayText: '🇷🇺 Русский', value: 'ru' },
             { displayText: '🇯🇵 日本語', value: 'ja' },
             { displayText: '🇰🇷 한국어', value: 'ko' }
         ]
@@ -506,9 +560,9 @@ const selectionTypeMap = {
         ]
     },
     statusBarLyrics: {
-        title: '状态栏歌词',
+        title: t('zhuang-tai-lan-ge-ci'),
         options: [
-            { displayText: t('da-kai')+ ' (仅支持Mac)', value: 'on' },
+            { displayText: t('da-kai') + t('jin-zhi-chi-mac'), value: 'on' },
             { displayText: t('guan-bi'), value: 'off' }
         ]
     },
@@ -549,49 +603,49 @@ const selectionTypeMap = {
         ]
     },
     lyricsTranslation: {
-        title: '歌词翻译',
+        title: t('ge-ci-fan-yi'),
         options: [
             { displayText: t('da-kai'), value: 'on' },
             { displayText: t('guan-bi'), value: 'off' }
         ]
     },
     lyricsAlign: {
-        title: '歌词对齐',
+        title: t('dui-qi-fang-shi'),
         options: [
-            { displayText: '左对齐', value: 'left' },
-            { displayText: '居中', value: 'center' },
-        ]
-    },
-    qualityCompatibility: {
-        title: '兼容模式',
-        options: [
-            { displayText: t('kai-qi'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
+            { displayText: t('ju-zuo'), value: 'left' },
+            { displayText: t('ju-zhong'), value: 'center' },
         ]
     },
     dpiScale: {
-        title: '缩放因子',
+        title: t('suo-fang-yin-zi'),
         options: [
             { displayText: '1.0', value: '1.0' }
         ]
     },
     font: {
-        title: '字体设置',
+        title: t('zi-ti-she-zhi'),
         options: [
-            { displayText: '默认字体', value: '' }
+            { displayText: t('mo-ren-zi-ti'), value: '' }
         ]
     },
     fontUrl: {
-        title: '字体文件地址',
+        title: t('zi-ti-wen-jian-di-zhi'),
         options: [
-            { displayText: '默认字体', value: '' }
+            { displayText: t('mo-ren-zi-ti'), value: '' }
         ]
     },
     apiMode: {
-        title: 'API模式',
+        title: t('api-mo-shi'),
         options: [
             { displayText: t('da-kai'), value: 'on' },
             { displayText: t('guan-bi'), value: 'off' }
+        ]
+    },
+    apiBaseUrlMode: {
+        title: 'RPC地址',
+        options: [
+            { displayText: '默认', value: 'default' },
+            { displayText: '自定义', value: 'custom' }
         ]
     },
     touchBar: {
@@ -602,58 +656,69 @@ const selectionTypeMap = {
         ]
     },
     autoStart: {
-        title: '开机自启动',
+        title: t('kai-ji-zi-qi-dong'),
         options: [
             { displayText: t('da-kai'), value: 'on' },
             { displayText: t('guan-bi'), value: 'off' }
         ]
     },
     startMinimized: {
-        title: '启动时最小化',
+        title: t('qi-dong-shi-zui-xiao-hua'),
         options: [
             { displayText: t('da-kai'), value: 'on' },
             { displayText: t('guan-bi'), value: 'off' }
         ]
     },
     preventAppSuspension: {
-        title: '阻止系统休眠',
+        title: t('zu-zhi-xi-tong-xiu-mian'),
         options: [
             { displayText: t('da-kai'), value: 'on' },
             { displayText: t('guan-bi'), value: 'off' }
         ]
     },
     networkMode: {
-        title: '网络节点',
+        title: t('wang-luo-jie-dian'),
         options: [
-            { displayText: '主网', value: 'mainnet' },
-            { displayText: '测试网', value: 'testnet' },
-            { displayText: '开发网', value: 'devnet' }
+            { displayText: t('zhu-wang'), value: 'mainnet' },
+            { displayText: t('ce-wang'), value: 'testnet' },
+            { displayText: t('kai-fa-wang'), value: 'devnet' }
         ]
     },
     proxy: {
-        title: '网络代理',
+        title: t('wang-luo-dai-li'),
         options: [
-            { displayText: '启用', value: 'on' },
-            { displayText: '禁用', value: 'off' }
+            { displayText: t('qi-yong'), value: 'on' },
+            { displayText: t('jin-yong'), value: 'off' }
         ]
     },
     proxyUrl: {
-        title: '代理地址',
+        title: t('dai-li-di-zhi'),
         options: []
     },
     dataSource: {
-        title: '数据源',
+        title: t('shu-ju-yuan'),
         options: [
-            { displayText: '概念版', value: 'concept' },
-            { displayText: '正式版', value: 'official' }
+            { displayText: t('gai-nian-ban-xuan-xiang'), value: 'concept' },
+            { displayText: t('zheng-shi-ban'), value: 'official' }
         ]
     },
     loudnessNormalization: {
-        title: '平衡音频响度',
+        title: t('ping-heng-yin-pin-xiang-du'),
         options: [
             { displayText: t('da-kai'), value: 'on' },
             { displayText: t('guan-bi'), value: 'off' }
         ]
+    },
+    pauseOnAudioOutputChange: {
+        title: '输出设备变化自动暂停',
+        options: [
+            { displayText: t('da-kai'), value: 'on' },
+            { displayText: t('guan-bi'), value: 'off' }
+        ]
+    },
+    audioOutputDevice: {
+        title: '音频输出设备',
+        options: []
     },
 
 };
@@ -670,19 +735,73 @@ const showRefreshHint = ref({
     preventAppSuspension: false,
     networkMode: false,
     apiMode: false,
+    apiBaseUrlMode: false,
     proxy: false,
     dataSource: false,
     statusBarLyrics: false,
 });
 
+const audioOutputDeviceOptions = ref([]);
+const audioOutputDevicesLoading = ref(false);
+
+const updateAudioOutputDeviceDisplayText = async (deviceId) => {
+    if (!deviceId || deviceId === 'default') {
+        selectedSettings.value.audioOutputDevice = { displayText: '默认', value: 'default' };
+        return;
+    }
+
+    let displayText = `已选择设备 (${deviceId.slice(0, 8)}...)`;
+    try {
+        if (navigator?.mediaDevices?.enumerateDevices) {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const matched = devices.find(d => d.kind === 'audiooutput' && d.deviceId === deviceId);
+            if (matched?.label) displayText = matched.label;
+        }
+    } catch {
+        // 忽略枚举失败
+    }
+
+    selectedSettings.value.audioOutputDevice = { displayText, value: deviceId };
+};
+
+const loadAudioOutputDevices = async () => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+        audioOutputDeviceOptions.value = [];
+        return;
+    }
+
+    audioOutputDevicesLoading.value = true;
+
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+        const options = [{ displayText: '默认', value: 'default' }];
+        let unnamedIndex = 1;
+
+        for (const output of outputs) {
+            if (!output.deviceId) continue;
+            const displayText = output.label || `输出设备 ${unnamedIndex++}`;
+            options.push({ displayText, value: output.deviceId });
+        }
+
+        const seen = new Set();
+        audioOutputDeviceOptions.value = options.filter(opt => {
+            if (seen.has(opt.value)) return false;
+            seen.add(opt.value);
+            return true;
+        });
+    } catch {
+        audioOutputDeviceOptions.value = [{ displayText: '默认', value: 'default' }];
+    } finally {
+        audioOutputDevicesLoading.value = false;
+    }
+};
+
 const openSelection = (type, helpLink) => {
     isSelectionOpen.value = true;
     selectionType.value = type;
     currentHelpLink.value = helpLink || selectionTypeMap[type]?.helpLink || '';
-
-    if (type === 'quality') {
-        qualityCompatibilityMode.value = selectedSettings.value.qualityCompatibility?.value === 'on';
-    }
 
     if (type === 'highDpi') {
         dpiScale.value = parseFloat(selectedSettings.value.dpiScale?.value || '1.0');
@@ -696,6 +815,16 @@ const openSelection = (type, helpLink) => {
     if (type === 'proxy') {
         proxyForm.url = selectedSettings.value.proxyUrl?.value || '';
     }
+
+    if (type === 'apiBaseUrlMode') {
+        apiBaseUrlForm.url = selectedSettings.value.apiBaseUrl?.value || '';
+        apiBaseUrlForm.testResult = '';
+        apiBaseUrlForm.testStatus = '';
+    }
+
+    if (type === 'audioOutputDevice') {
+        void loadAudioOutputDevices();
+    }
 };
 
 const openHelpLink = () => {
@@ -708,18 +837,18 @@ const openHelpLink = () => {
     }
 };
 
-const selectOption = (option) => {
+    const selectOption = async (option) => {
     const electronFeatures = ['desktopLyrics', 'statusBarLyrics', 'gpuAcceleration', 'minimizeToTray', 'highDpi', 'nativeTitleBar', 'touchBar', 'autoStart', 'startMinimized', 'preventAppSuspension', 'networkMode', 'poxySettings', 'apiMode', 'dataSource', 'statusBarLyrics'];
     if (!isElectron() && electronFeatures.includes(selectionType.value)) {
         window.$modal.alert(t('fei-ke-hu-duan-huan-jing-wu-fa-qi-yong'));
         return;
     }
     if(selectionType.value == 'touchBar' && window.electron.platform != 'darwin'){
-        window.$modal.alert('非Mac设备不支持TouchBar');
+        window.$modal.alert(t('fei-mac-bu-zhi-chi-touchbar'));
         return;
     }
     if(selectionType.value == 'statusBarLyrics' && window.electron.platform != 'darwin'){
-        window.$modal.alert('状态栏歌词仅支持Mac系统');
+        window.$modal.alert(t('zhuang-tai-lan-ge-ci-jin-zhi-chi-mac'));
         return;
     }
     selectedSettings.value[selectionType.value] = option;
@@ -735,10 +864,6 @@ const selectOption = (option) => {
                 window.$modal.alert(t('gao-pin-zhi-yin-le-xu-yao-deng-lu-hou-cai-neng-bo-fango'));
                 return;
             }
-            selectedSettings.value.qualityCompatibility = {
-                value: qualityCompatibilityMode.value ? 'on' : 'off',
-                displayText: qualityCompatibilityMode.value ? t('kai-qi') : t('guan-bi')
-            };
         },
         'highDpi': () => {
             selectedSettings.value.dpiScale = {
@@ -755,31 +880,61 @@ const selectOption = (option) => {
             window.dispatchEvent(new CustomEvent('loudness-normalization-change', {
                 detail: { enabled: option.value === 'on' }
             }));
+        },
+        'pauseOnAudioOutputChange': async () => {
+            if (option.value === 'on') {
+                const granted = await requestMicrophonePermission();
+                if (!granted) {
+                    selectedSettings.value.pauseOnAudioOutputChange = {
+                        displayText: t('guan-bi'),
+                        value: 'off'
+                    };
+                    window.dispatchEvent(new CustomEvent('audio-output-device-watch-change', {
+                        detail: { enabled: false }
+                    }));
+                    window.$modal.alert('音频权限申请失败，无法启用该功能');
+                    return;
+                }
+            }
+
+            window.dispatchEvent(new CustomEvent('audio-output-device-watch-change', {
+                detail: { enabled: option.value === 'on' }
+            }));
+        },
+        'apiBaseUrlMode': () => {
+            if (option.value === 'default') {
+                selectedSettings.value.apiBaseUrl = { displayText: '', value: '' };
+            }
+        },
+        'audioOutputDevice': async () => {
+            window.dispatchEvent(new CustomEvent('audio-output-device-change', {
+                detail: { deviceId: option.value }
+            }));
         }
     };
-    actions[selectionType.value]?.();
+    await actions[selectionType.value]?.();
     saveSettings();
-    if(!['apiMode','font','fontUrl', 'proxy'].includes(selectionType.value)) closeSelection();
-    const refreshHintTypes = ['nativeTitleBar','lyricsBackground', 'lyricsFontSize', 'gpuAcceleration', 'highDpi', 'apiMode', 'touchBar', 'preventAppSuspension', 'networkMode', 'font', 'proxy', 'dataSource', 'loudnessNormalization', 'statusBarLyrics'];
+    if(!['apiMode','font','fontUrl', 'proxy', 'apiBaseUrlMode'].includes(selectionType.value)) closeSelection();
+    const refreshHintTypes = ['nativeTitleBar','lyricsBackground', 'lyricsFontSize', 'gpuAcceleration', 'highDpi', 'apiMode', 'apiBaseUrlMode', 'touchBar', 'preventAppSuspension', 'networkMode', 'font', 'proxy', 'dataSource', 'loudnessNormalization', 'statusBarLyrics'];
     if (refreshHintTypes.includes(selectionType.value)) {
         showRefreshHint.value[selectionType.value] = true;
     }
 };
 
-const updateFontSetting = (key) => {
+const updateFontSetting = async (key) => {
     const prevType = selectionType.value;
     const value = key === 'font' ? (fontFamilyInput.value || '') : (fontUrlInput.value || '');
-    const displayText = key === 'font' ? (value || '默认字体') : (value || '默认字体');
+    const displayText = key === 'font' ? (value || t('mo-ren-zi-ti')) : (value || t('mo-ren-zi-ti'));
     selectionType.value = key;
-    selectOption({ displayText, value });
+    await selectOption({ displayText, value });
     selectionType.value = prevType;
 };
 
-const handleFontFocusOut = (e) => {
+const handleFontFocusOut = async (e) => {
     const container = e.currentTarget;
     if (container && e.relatedTarget && container.contains(e.relatedTarget)) return;
-    updateFontSetting('fontUrl');
-    updateFontSetting('font');
+    await updateFontSetting('fontUrl');
+    await updateFontSetting('font');
 };
 
 const isElectron = () => {
@@ -800,9 +955,28 @@ const closeSelection = () => {
 
 onMounted(() => {
     const savedSettings = JSON.parse(localStorage.getItem('settings'));
+    
     if (savedSettings) {
+        if (savedSettings.apiBaseUrlMode === undefined) {
+            const legacyUrl = savedSettings.apiBaseUrl || '';
+            savedSettings.apiBaseUrlMode = legacyUrl ? 'custom' : 'default';
+        }
         for (const key in savedSettings) {
             if (key === 'shortcuts') continue;
+            if (key === 'audioOutputDevice') continue;
+            if (key === 'apiBaseUrlMode') {
+                const value = savedSettings[key] || 'default';
+                selectedSettings.value[key] = {
+                    displayText: value === 'custom' ? '自定义' : '默认',
+                    value: value
+                };
+                continue;
+            }
+            if (key === 'apiBaseUrl') {
+                const value = savedSettings[key] || '';
+                selectedSettings.value[key] = { displayText: '', value: value };
+                continue;
+            }
             if (key === 'proxyUrl') {
                 const value = savedSettings[key];
                 selectedSettings.value[key] = {
@@ -815,13 +989,15 @@ onMounted(() => {
                 if (key === 'font') {
                     const value = savedSettings[key];
                     selectedSettings.value[key] = {
-                        displayText: value || '默认字体',
+                        displayText: value || t('mo-ren-zi-ti'),
                         value: value
                     };
                 } else {
-                    const displayText = selectionTypeMap[key].options.find(
-                        (option) => option.value === savedSettings[key]
-                    )?.displayText || '🌏 ' + t('zi-dong');
+                    // Always get displayText from current translation, not from localStorage
+                    const option = selectionTypeMap[key].options.find(
+                        (opt) => opt.value === savedSettings[key]
+                    );
+                    const displayText = option?.displayText || '🌏 ' + t('zi-dong');
                     selectedSettings.value[key] = { displayText, value: savedSettings[key] };
                 }
             }
@@ -839,17 +1015,76 @@ onMounted(() => {
         appVersion.value = localStorage.getItem('version');
         platform.value = window.electron.platform;
     }
+
+    if (savedSettings?.audioOutputDevice !== undefined) {
+        void updateAudioOutputDeviceDisplayText(savedSettings.audioOutputDevice);
+    }
 });
 
 const showShortcutModal = ref(false);
 const recordingKey = ref('');
 const shortcuts = ref({});
 const proxyForm = reactive({url: '', testing: false, testResult: '', testStatus: '' });
+const apiBaseUrlForm = reactive({ url: '', testing: false, testResult: '', testStatus: '' });
+
+const testApiBaseUrl = async () => {
+    const validation = validateApiBaseUrl(apiBaseUrlForm.url);
+    if (!validation.ok) {
+        apiBaseUrlForm.testResult = validation.error;
+        apiBaseUrlForm.testStatus = 'error';
+        return;
+    }
+
+    const candidate = validation.value || defaultApiBaseUrl;
+    apiBaseUrlForm.testing = true;
+    apiBaseUrlForm.testResult = t('zheng-zai-ce-shi');
+    apiBaseUrlForm.testStatus = 'testing';
+
+    const result = await testApiBaseUrlRequest(candidate, { path: '/register/dev' });
+    apiBaseUrlForm.testing = false;
+
+    if (result.ok) {
+        apiBaseUrlForm.testResult = '连接成功';
+        apiBaseUrlForm.testStatus = 'success';
+    } else if (result.error === 'timeout') {
+        apiBaseUrlForm.testResult = t('lian-jie-chao-shi');
+        apiBaseUrlForm.testStatus = 'error';
+    } else if (result.error === 'no_dfid') {
+        apiBaseUrlForm.testResult = 'RPC端点协议不符合';
+        apiBaseUrlForm.testStatus = 'error';
+    } else if (typeof result.status === 'number') {
+        apiBaseUrlForm.testResult = `连接失败：${result.status} ${result.statusText || ''}`.trim();
+        apiBaseUrlForm.testStatus = 'error';
+    } else {
+        apiBaseUrlForm.testResult = `连接错误：${result.error || ''}`.trim();
+        apiBaseUrlForm.testStatus = 'error';
+    }
+};
+
+const saveApiBaseUrl = () => {
+    const validation = validateApiBaseUrl(apiBaseUrlForm.url);
+    if (!validation.ok) {
+        window.$modal.alert(validation.error);
+        return;
+    }
+
+    const value = validation.value;
+    if (!value) {
+        selectedSettings.value.apiBaseUrlMode = { displayText: '默认', value: 'default' };
+        selectedSettings.value.apiBaseUrl = { displayText: '', value: '' };
+    } else {
+        selectedSettings.value.apiBaseUrlMode = { displayText: '自定义', value: 'custom' };
+        selectedSettings.value.apiBaseUrl = { displayText: '', value: value };
+    }
+    saveSettings();
+    showRefreshHint.value.apiBaseUrlMode = true;
+    closeSelection();
+};
 
 const testProxyConnection = async () => {
     const proxyUrl = proxyForm.url.trim();
     if (!proxyUrl) {
-        proxyForm.testResult = '请输入代理服务器地址';
+        proxyForm.testResult = t('qing-shu-ru-dai-li-di-zhi');
         proxyForm.testStatus = 'error';
         return;
     }
@@ -857,18 +1092,18 @@ const testProxyConnection = async () => {
     try {
         const url = new URL(proxyUrl);
         if (!['http:', 'https:'].includes(url.protocol)) {
-            proxyForm.testResult = '仅支持HTTP或HTTPS代理';
+            proxyForm.testResult = t('zhi-chi-http-https-dai-li');
             proxyForm.testStatus = 'error';
             return;
         }
     } catch (e) {
-        proxyForm.testResult = '请输入有效的URL地址';
+        proxyForm.testResult = t('qing-shu-ru-you-xiao-de-url');
         proxyForm.testStatus = 'error';
         return;
     }
 
     proxyForm.testing = true;
-    proxyForm.testResult = '正在测试连接...';
+    proxyForm.testResult = t('zheng-zai-ce-shi');
     proxyForm.testStatus = 'testing';
 
     try {
@@ -897,17 +1132,17 @@ const testProxyConnection = async () => {
 
         if (response.ok) {
             const data = await response.json();
-            proxyForm.testResult = `代理连接成功，IP: ${data.ip}`;
+            proxyForm.testResult = t('dai-li-lian-jie-cheng-gong') + data.ip;
             proxyForm.testStatus = 'success';
         } else {
-            proxyForm.testResult = `代理连接失败: ${response.statusText}`;
+            proxyForm.testResult = t('dai-li-lian-jie-shi-bai') + response.statusText;
             proxyForm.testStatus = 'error';
         }
     } catch (error) {
         if (error.name === 'AbortError') {
-            proxyForm.testResult = '连接超时';
+            proxyForm.testResult = t('lian-jie-chao-shi');
         } else {
-            proxyForm.testResult = `连接错误: ${error.message}`;
+            proxyForm.testResult = t('lian-jie-cuo-wu') + error.message;
         }
         proxyForm.testStatus = 'error';
     } finally {
@@ -917,23 +1152,23 @@ const testProxyConnection = async () => {
 
 const saveProxy = () => {
     const proxyUrl = proxyForm.url.trim();
-    
+
     try {
         if (proxyUrl) {
             const url = new URL(proxyUrl);
             if (!['http:', 'https:'].includes(url.protocol)) {
-                window.$modal.alert('暂仅支持HTTP或HTTPS代理');
+                window.$modal.alert(t('zhi-chi-http-https-dai-li'));
                 return;
             }
         }
     } catch (e) {
-        window.$modal.alert('请输入有效的URL地址');
+        window.$modal.alert(t('qing-shu-ru-you-xiao-de-url'));
         return;
     }
 
     // 更新代理状态
     selectedSettings.value.proxy = {
-        displayText: proxyUrl ? '启用' : '禁用',
+        displayText: proxyUrl ? t('qi-yong') : t('jin-yong'),
         value: proxyUrl ? 'on' : 'off'
     };
     
@@ -989,7 +1224,7 @@ const shortcutConfigs = ref({
         defaultValue: 'Alt+Ctrl+P'
     },
     toggleDesktopLyrics: {
-        label: '显示/隐藏桌面歌词',
+        label: t('xian-shi-yin-cang-zhuo-mian-ge-ci'),
         defaultValue: 'Alt+Ctrl+D'
     }
 });
@@ -1128,15 +1363,14 @@ const clearShortcut = (key) => {
     shortcuts.value[key] = '';
 };
 
-const qualityCompatibilityMode = ref(false);
 const dpiScale = ref(1.0);
 
 const openResetConfirmation = async () => {
-    const result = await window.$modal.confirm('你确定要恢复出厂设置吗？此操作不可逆！');
+    const result = await window.$modal.confirm(t('ni-que-ren-hui-fu-chu-chang'));
     if(result){
         localStorage.clear();
         isElectron() && window.electron.ipcRenderer.send('clear-settings');
-        window.$modal.alert('恢复出厂设置成功，重启生效');
+        window.$modal.alert(t('hui-fu-chu-chang-she-zhi-cheng-gong'));
     }
 };
 
@@ -1150,7 +1384,7 @@ if(!isElectron()){
 
 const installPWA = async () => {
     if(isElectron()){
-        window.$modal.alert('请在Web环境下安装');
+        window.$modal.alert(t('qing-zai-web-huan-jing-xia-an-zhuang'));
         return;
     }
     deferredPrompt.prompt();
@@ -1508,28 +1742,6 @@ const installPWA = async () => {
     background-color: #e53935;
 }
 
-.compatibility-option {
-    margin-top: 15px;
-    text-align: left;
-    padding: 10px;
-    background-color: var(--background-color);
-    border-radius: 8px;
-}
-
-.compatibility-option label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-}
-
-.compatibility-hint {
-    margin-top: 5px;
-    font-size: 12px;
-    color: #666;
-    line-height: 21px;
-}
-
 .scale-slider-container {
     margin-top: 15px;
     text-align: left;
@@ -1629,10 +1841,12 @@ const installPWA = async () => {
 .proxy-actions {
     display: flex;
     gap: 12px;
+    width: 100%;
 }
 
 .proxy-actions button {
     flex: 1;
+    min-width: 0;
     padding: 8px 0;
     border-radius: 6px;
 }

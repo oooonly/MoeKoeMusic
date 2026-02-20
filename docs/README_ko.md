@@ -17,7 +17,8 @@
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_tw.md" target="blank"><strong>🇨🇳 繁体中文</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ja.md" target="blank"><strong>🇯🇵 日本語</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_en.md" target="blank"><strong>🇺🇸 English</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ko.md" target="blank"><strong>🇰🇷 한국어</strong></a>
+    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ko.md" target="blank"><strong>🇰🇷 한국어</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
+    <a href="https://github.com/iAJue/MoeKoeMusic/blob/main/docs/README_ru.md" target="blank"><strong>🇷🇺 Русский</strong></a>
     <br />
     <br />
   </p>
@@ -49,11 +50,10 @@
 - 🛠 더 많은 기능 개발 중
 
 ## 📢 Todo List
-- [ ] 📺 뮤직비디오 재생 지원
+- [x] 📺 뮤직비디오 재생 지원
 - [x] 🌚 Light/Dark Mode 자동 전환
 - [x] 👆 Touch Bar 지원
 - [x] 🖥️ PWA 지원, Chrome/Edge에서 주소 표시줄 오른쪽에 있는➕ 컴퓨터에 설치
-- [ ] 🟥 Last.fm Scrobble 지원
 - [ ] 🎧 지원 Mpris
 - [x] ⌨️ 단축키 및 전역 단축키 사용자 정의
 - [x] 🤟 다국어 지원
@@ -65,14 +65,66 @@
 
 ## 📦️ 설치
 
-이 프로젝트의 [Releases](https://github.com/iAJue/MoeKoeMusic/releases) 페이지에서 설치 패키지를 다운로드합니다.
+### 1. 클라이언트 설치
+
+본 프로젝트의 [Releases](https://github.com/iAJue/MoeKoeMusic/releases) 페이지를 방문하여 설치 패키지를 다운로드하세요.
+
+### 2. WEB 설치 (docker)
+
+* 주의: 배포 후 서버의 해당 포트를 개방해야 사용할 수 있습니다. 또는 역방향 프록시를 사용하여 도메인 접근을 구현할 수 있습니다.
+
+  1. 방법 1: 빠른 시작 (추천)
+
+  ```
+  git clone https://github.com/iAJue/MoeKoeMusic.git
+  cd MoeKoeMusic
+  git submodule update --init --recursive
+  docker compose up -d &
+  ```
+
+  2. ~~방법 2: docker-compose를 사용한 원클릭 설치 (이미지 미업로드 중)~~
+  
+  ```
+  docker run -d --name MoeKoeMusic -p 8080:8080 -p 6521:6521 -e PORT=6521 -e platform=lite iajue/moekoe-music:latest
+  ```
+
+  3. 방법 3: 바오타 컨테이너 오케스트레이션
+
+  * 원격 이미지, 버전이 공식보다 뒤떨어질 수 있음
+  
+  ```
+  version: '3.3'
+  
+  services:
+    moekoe-music:
+    # 이미지 주소
+    image: registry.cn-wulanchabu.aliyuncs.com/youngxj/moekoe-music:latest
+    container_name: moekoe-music # 컨테이너명
+    restart: unless-stopped # 자동 재시작
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - PORT=6521
+      - platform=lite
+    ports: # 포트 매핑
+      - "8080:8080"  # 프론트엔드 서비스
+      - "6521:6521"  # API 서비스
+  
+  ```
+  
+  위의 내용을 복사하여 바오타 패널의 컨테이너 오케스트레이션에 붙여넣고, 오케스트레이션 이름을 MoeKoeMusic으로 설정한 후 배포를 클릭하면 됩니다.
+### 3. 원클릭 배포
+[![使用 EdgeOne Pages 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?template=https://github.com/iAJue/moekoemusic&install-command=npm%20install&output-directory=dist&root-directory=.%2F&build-command=npm%20run%20build&env=VITE_APP_API_URL)
+
+환경 변수 VITE_APP_API_URL에 본인의 API 주소를 입력해야 합니다.
 
 ## ⚙️ 개발
 
 1. 본 창고 클론
 
 ```sh
-git clone https://github.com/iAJue/MoeKoeMusic.git
+git clone --recurse-submodules https://github.com/iAJue/MoeKoeMusic.git
 ```
 
 2. 디렉터리에 들어가서 종속성 설치
@@ -231,7 +283,6 @@ x64 및 arm64 스키마를 지정하거나 다른 대상 형식을 선택하는 
 ## 👍 영감의 원천
 
 API 소스 코드는 [MakcRe/KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi) 
-(원 프로젝트의 구조를 파괴하지 않고 후기 업데이트 반복의 편리를 위해 API는 고도로 통합되지 않았다.~~사실 수고를 덜려고 ~~)
 
 - [Apple Music](https://music.apple.com)
 - [YouTube Music](https://music.youtube.com)

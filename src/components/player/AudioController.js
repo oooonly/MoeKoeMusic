@@ -306,6 +306,8 @@ export default function useAudioController({ onSongEnd, updateCurrentTime }) {
     // 销毁时清理
     const destroy = () => {
         console.log('[AudioController] 销毁音频控制器');
+        audio.pause();
+        audio.load();
         audio.removeEventListener('play', handleAudioEvent);
         audio.removeEventListener('ended', onSongEnd);
         audio.removeEventListener('pause', handleAudioEvent);
