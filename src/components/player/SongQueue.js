@@ -208,8 +208,8 @@ export default function useSongQueue(t, musicQueueStore, queueList = null) {
             }
 
             // 设置URL
-            if (response.url && response.url[0]) {
-                currentSong.value.url = response.url[0];
+            if (response.url && response.url[1]) {
+                currentSong.value.url = `${import.meta.env.VITE_APP_API_URL}song/raw?targetUrl=${response.url[1]}`;
                 currentSong.value.playHash = selectedCandidate.hash || hash;
                 currentSong.value.resolvedQuality = selectedCandidate.quality || '';
                 currentSong.value.qualityLabel = getQualityLabel(selectedCandidate.quality);
@@ -233,7 +233,7 @@ export default function useSongQueue(t, musicQueueStore, queueList = null) {
                 img: img,
                 author: author,
                 timeLength: response.timeLength,
-                url: response.url[0],
+                url: `${import.meta.env.VITE_APP_API_URL}song/raw?targetUrl=${response.url[1]}`,
                 // 响度规格化参数
                 loudnessNormalization: {
                     volume: response.volume || 0,
@@ -603,4 +603,4 @@ export default function useSongQueue(t, musicQueueStore, queueList = null) {
         addCloudPlaylistToQueue,
         privilegeSong
     };
-}
+} 
