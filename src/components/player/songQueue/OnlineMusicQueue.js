@@ -3,13 +3,13 @@ import { MoeAuthStore } from '../../../stores/store';
 
 const QUALITY_LEVELS = ['128', '320', 'flac', 'high', 'viper_atmos', 'viper_clear', 'viper_tape'];
 const QUALITY_LABELS = {
-    '128': '鏍囧噯',
-    '320': '楂樺搧',
+    '128': '标准',
+    '320': '高品',
     flac: 'FLAC',
     high: 'Hi-Res',
-    viper_atmos: '鍏ㄦ櫙澹?,
-    viper_clear: '瓒呮竻',
-    viper_tape: '姣嶅甫'
+    viper_atmos: '全景声',
+    viper_clear: '超清',
+    viper_tape: '母带'
 };
 
 const normalizeQuality = (quality) => {
@@ -72,7 +72,7 @@ const getPrivilegeCandidates = (qualityOptions, quality, originalHash) => {
 export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, timeoutId) {
     let activeSongRequestId = 0;
 
-    // 娣诲姞姝屾洸鍒伴槦鍒楀苟鎾斁
+    // 添加歌曲到队列并播放
     const addSongToQueue = async (hash, name, img, author, isReset = true, qualityOverride = '', cachedQualityOptions = []) => {
         if(!hash) return { error: true };
         const requestId = ++activeSongRequestId;
@@ -93,14 +93,14 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
             currentSong.value.qualityLabel = '';
             currentSong.value.qualityOptions = [];
 
-            console.log('[SongQueue] 鑾峰彇姝屾洸:', hash, name);
+            console.log('[SongQueue] 获取歌曲:', hash, name);
 
             const settings = JSON.parse(localStorage.getItem('settings') || '{}');
             const data = {
                 hash: hash
             };
 
-            // 鏍规嵁鐢ㄦ埛璁剧疆纭畾璇锋眰鍙傛暟
+            // 根据用户设置确定请求参数
             const MoeAuth = typeof MoeAuthStore === 'function' ? MoeAuthStore() : { isAuthenticated: false };
             const isAuth = !!MoeAuth.isAuthenticated;
 
@@ -129,13 +129,13 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
                     }
                     candidates = getPrivilegeCandidates(qualityOptions, q, hash);
                 } catch (error) {
-                    if (error.response?.data?.error?.includes('楠岃瘉')) {
+                    if (error.response?.data?.error?.includes('验证')) {
                         throw error;
                     }
                     if (error.response?.data?.status == 2) {
                         throw error;
                     }
-                    console.error('[SongQueue] 鑾峰彇姝屾洸璇︽儏澶辫触锛屽洖閫€鍒板師濮嬪搱甯岃姹?', error);
+                    console.error('[SongQueue] 获取歌曲详情失败，回退到原始哈希请求:', error);
                 }
 
                 for (const candidate of candidates) {
@@ -153,7 +153,7 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
                         }
 
                         if (candidateResponse.extName == 'mp4') {
-                            console.log('[SongQueue] 姝屾洸鏍煎紡涓篗P4锛屽皾璇曡幏鍙栦笅涓€妗ｉ煶璐?);
+                            console.log('[SongQueue] 歌曲格式为MP4，尝试获取下一档音质');
                             response = candidateResponse;
                             continue;
                         }
@@ -167,13 +167,13 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
                         selectedCandidate = candidate;
                         break;
                     } catch (error) {
-                        if (error.response?.data?.error?.includes('楠岃瘉')) {
+                        if (error.response?.data?.error?.includes('验证')) {
                             throw error;
                         }
                         if (error.response?.data?.status == 2) {
                             throw error;
                         }
-                        console.error('[SongQueue] 鑾峰彇鍊欓€夐煶璐ㄥけ璐?', error);
+                        console.error('[SongQueue] 获取候选音质失败:', error);
                     }
                 }
             }
@@ -181,7 +181,7 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
             if (isStaleRequest()) return { stale: true };
 
             if (!response || response.status !== 1) {
-                console.error('[SongQueue] 鑾峰彇闊充箰URL澶辫触:', response);
+                console.error('[SongQueue] 获取音乐URL失败:', response);
                 currentSong.value.author = currentSong.value.name = t('huo-qu-yin-le-shi-bai');
                 if (response?.status == 3) {
                     currentSong.value.name = t('gai-ge-qu-zan-wu-ban-quan');
@@ -189,25 +189,25 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
                 if (musicQueueStore.queue.length === 0) return { error: true };
                 currentSong.value.author = t('3-miao-hou-zi-dong-qie-huan-xia-yi-shou');
 
-                // 杩斿洖闇€瑕佸垏鎹㈠埌涓嬩竴棣栫殑鏍囧織锛岃€屼笉鏄洿鎺ヨ皟鐢╬laySongFromQueue
+                // 返回需要切换到下一首的标志，而不是直接调用playSongFromQueue
                 return { error: true, shouldPlayNext: true };
             }
 
-            // 璁剧疆URL
+            // 设置URL
             if (response.url && response.url[1]) {
                 currentSong.value.url = `${import.meta.env.VITE_APP_API_URL}song/raw?targetUrl=${response.url[1]}`;
                 currentSong.value.playHash = selectedCandidate.hash || hash;
                 currentSong.value.resolvedQuality = selectedCandidate.quality || '';
                 currentSong.value.qualityLabel = getQualityLabel(selectedCandidate.quality);
                 currentSong.value.qualityOptions = qualityOptions.map(option => ({ ...option }));
-                console.log('[SongQueue] 鑾峰彇鍒伴煶涔怳RL:', currentSong.value.url);
+                console.log('[SongQueue] 获取到音乐URL:', currentSong.value.url);
             } else {
-                console.error('[SongQueue] 鏈幏鍙栧埌闊充箰URL');
+                console.error('[SongQueue] 未获取到音乐URL');
                 currentSong.value.author = currentSong.value.name = t('huo-qu-yin-le-shi-bai');
                 return { error: true };
             }
 
-            // 鍒涘缓姝屾洸瀵硅薄
+            // 创建歌曲对象
             const song = {
                 id: musicQueueStore.queue.length + 1,
                 hash: hash,
@@ -220,18 +220,20 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
                 author: author,
                 timeLength: response.timeLength,
                 url: `${import.meta.env.VITE_APP_API_URL}song/raw?targetUrl=${response.url[1]}`,
-                // 鍝嶅害瑙勬牸鍖栧弬鏁?                loudnessNormalization: {
+                // 响度规格化参数
+                loudnessNormalization: {
                     volume: response.volume || 0,
                     volumeGain: response.volume_gain || 0,
                     volumePeak: response.volume_peak || 1
                 }
             };
 
-            // 鏍规嵁鏄惁闇€瑕侀噸缃挱鏀句綅缃?            if (isReset) {
+            // 根据是否需要重置播放位置
+            if (isReset) {
                 localStorage.setItem('player_progress', 0);
             }
 
-            // 鏇存柊闃熷垪
+            // 更新队列
             const existingSongIndex = musicQueueStore.queue.findIndex(song => song.hash === hash);
             if (existingSongIndex === -1) {
                 const currentIndex = musicQueueStore.queue.findIndex(song => song.hash == currentSongHash);
@@ -241,18 +243,18 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
                     musicQueueStore.addSong(song);
                 }
             } else {
-                // 濡傛灉姝屾洸宸插瓨鍦紝鍙洿鏂板綋鍓嶆瓕鏇茬殑淇℃伅锛屼笉淇敼闃熷垪
+                // 如果歌曲已存在，只更新当前歌曲的信息，不修改队列
                 currentSong.value = song;
             }
 
-            // 杩斿洖姝屾洸瀵硅薄
+            // 返回歌曲对象
             return { song };
         } catch (error) {
             if (isStaleRequest()) return { stale: true };
-            console.error('[SongQueue] 鑾峰彇闊充箰鍦板潃鍑洪敊:', error);
+            console.error('[SongQueue] 获取音乐地址出错:', error);
             currentSong.value.author = currentSong.value.name = t('huo-qu-yin-le-di-zhi-shi-bai');
-            if (error.response?.data?.error?.includes('楠岃瘉')) {
-                window.$modal.alert('璐︽埛椋庢帶,璇风◢鍊欓噸璇?');
+            if (error.response?.data?.error?.includes('验证')) {
+                window.$modal.alert('账户风控,请稍候重试!');
                 return { error: true};
             }
             if (error.response?.data?.status == 2) {
@@ -262,12 +264,12 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
             if (musicQueueStore.queue.length === 0) return { error: true };
             currentSong.value.author = t('3-miao-hou-zi-dong-qie-huan-xia-yi-shou');
 
-            // 杩斿洖闇€瑕佸垏鎹㈠埌涓嬩竴棣栫殑鏍囧織锛岃€屼笉鏄洿鎺ヨ皟鐢╬laySongFromQueue
+            // 返回需要切换到下一首的标志，而不是直接调用playSongFromQueue
             return { error: true, shouldPlayNext: true };
         }
     };
 
-    // 鑾峰彇姝屽崟鍏ㄩ儴姝屾洸
+    // 获取歌单全部歌曲
     const getPlaylistAllSongs = async (id) => {
         try {
             let allSongs = [];
@@ -290,7 +292,8 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
         }
     };
 
-    // 娣诲姞姝屽崟鍒版挱鏀惧垪琛?    const addPlaylistToQueue = async (info, append = false) => {
+    // 添加歌单到播放列表
+    const addPlaylistToQueue = async (info, append = false) => {
         let songs = [];
         if (!append) {
             musicQueueStore.clearQueue();
@@ -323,7 +326,7 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
         return songs;
     };
 
-    // 鑾峰彇姝屾洸璇︽儏
+    // 获取歌曲详情
     const privilegeSong = async (hash) => {
         const response = await get(`/privilege/lite`,{hash:hash});
         return response;

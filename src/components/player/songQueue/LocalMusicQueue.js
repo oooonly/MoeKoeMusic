@@ -69,7 +69,7 @@ const saveLocalSongHandle = async (hash, item) => {
             timestamp: Date.now()
         });
     } catch (error) {
-        console.error('[SongQueue] 淇濆瓨鏈湴姝屾洸鍙ユ焺澶辫触:', error);
+        console.error('[SongQueue] 保存本地歌曲句柄失败:', error);
     }
 };
 
@@ -100,7 +100,7 @@ const resolveLocalSongFile = async (item, hash, shouldRequestPermission = true) 
         const storedSong = await getLocalStoreItem(`${LOCAL_SONG_KEY_PREFIX}${hash}`);
         return await getFileFromHandle(storedSong?.handle, shouldRequestPermission);
     } catch (error) {
-        console.error('[SongQueue] 璇诲彇鏈湴姝屾洸鍙ユ焺澶辫触:', error);
+        console.error('[SongQueue] 读取本地歌曲句柄失败:', error);
         return null;
     }
 };
@@ -114,7 +114,7 @@ const readLocalSongCover = async (file) => {
         const blob = new Blob([picture.data], { type: picture.format });
         return URL.createObjectURL(blob);
     } catch (error) {
-        console.error('[SongQueue] 璇诲彇鏈湴姝屾洸灏侀潰澶辫触:', error);
+        console.error('[SongQueue] 读取本地歌曲封面失败:', error);
         return './assets/images/ico.png';
     }
 };
@@ -130,7 +130,7 @@ export default function useLocalMusicQueue(t, musicQueueStore, currentSong, time
         return readLocalSongCover(localFile);
     };
 
-    // 娣诲姞鏈湴闊充箰鍒伴槦鍒楀苟鎾斁
+    // 添加本地音乐到队列并播放
     const addLocalMusicToQueue = async (localItem, isReset = true) => {
 
         const currentSongHash = currentSong.value.hash;
@@ -138,7 +138,7 @@ export default function useLocalMusicQueue(t, musicQueueStore, currentSong, time
         if (!localHash) return { error: true };
 
         if (typeof window !== 'undefined' && typeof window.electron !== 'undefined') {
-            window.electron.ipcRenderer.send('set-tray-title', (localItem.displayName || localItem.name) + ' - ' + (localItem.author || '鏈煡鑹烘湳瀹?));
+            window.electron.ipcRenderer.send('set-tray-title', (localItem.displayName || localItem.name) + ' - ' + (localItem.author || '未知艺术家'));
         }
 
         try {
@@ -149,20 +149,20 @@ export default function useLocalMusicQueue(t, musicQueueStore, currentSong, time
             await saveLocalSongHandle(localHash, localItem);
             const localCover = hasCurrentFile ? getLocalSongCover(localItem) : await readLocalSongCover(localFile);
             
-            // 璁剧疆褰撳墠姝屾洸淇℃伅
-            currentSong.value.author = localItem.author || '鏈煡鑹烘湳瀹?;
+            // 设置当前歌曲信息
+            currentSong.value.author = localItem.author || '未知艺术家';
             currentSong.value.name = localItem.displayName || localItem.name;
             currentSong.value.img = localCover;
             currentSong.value.hash = localHash;
             currentSong.value.qualityLabel = '';
             currentSong.value.qualityOptions = [];
 
-            // 鍒涘缓鏈湴鏂囦欢鐨?URL
+            // 创建本地文件的 URL
             const url = URL.createObjectURL(localFile);
             currentSong.value.url = url;
-            console.log('[SongQueue] 鍒涘缓鏈湴闊充箰URL:', url);
+            console.log('[SongQueue] 创建本地音乐URL:', url);
 
-            // 鍒涘缓姝屾洸瀵硅薄
+            // 创建歌曲对象
             const song = {
                 id: localItem.id || musicQueueStore.queue.length + 1,
                 hash: currentSong.value.hash,
@@ -176,11 +176,12 @@ export default function useLocalMusicQueue(t, musicQueueStore, currentSong, time
                 handle: localItem.handle
             };
 
-            // 鏍规嵁鏄惁闇€瑕侀噸缃挱鏀句綅缃?            if (isReset) {
+            // 根据是否需要重置播放位置
+            if (isReset) {
                 localStorage.setItem('player_progress', 0);
             }
 
-            // 鏇存柊闃熷垪
+            // 更新队列
             const existingSongIndex = musicQueueStore.queue.findIndex(song => song.hash === currentSong.value.hash);
             if (existingSongIndex === -1) {
                 const currentIndex = musicQueueStore.queue.findIndex(song => song.hash == currentSongHash);
@@ -198,21 +199,22 @@ export default function useLocalMusicQueue(t, musicQueueStore, currentSong, time
                 currentSong.value = musicQueueStore.queue[existingSongIndex];
             }
 
-            // 杩斿洖姝屾洸瀵硅薄
+            // 返回歌曲对象
             return { song };
         } catch (error) {
-            console.error('[SongQueue] 鑾峰彇鏈湴闊充箰鍦板潃鍑洪敊:', error);
+            console.error('[SongQueue] 获取本地音乐地址出错:', error);
             currentSong.value.author = currentSong.value.name = t('huo-qu-ben-di-yin-le-di-zhi-shi-bai');
             // if (musicQueueStore.queue.length === 0) return { error: true };
             currentSong.value.author = t('3-miao-hou-zi-dong-qie-huan-xia-yi-shou');
 
-            // 杩斿洖闇€瑕佸垏鎹㈠埌涓嬩竴棣栫殑鏍囧織锛岃€屼笉鏄洿鎺ヨ皟鐢╬laySongFromQueue
+            // 返回需要切换到下一首的标志，而不是直接调用playSongFromQueue
             return { error: true, shouldPlayNext: true };
         }
     };
 
-    // 鎵归噺娣诲姞鏈湴闊充箰鍒版挱鏀惧垪琛?    const addLocalPlaylistToQueue = async (localSongs, append = false) => {
-        console.log('[SongQueue] 娣诲姞鏈湴鎾斁鍒楄〃:', localSongs.length, '棣栨瓕鏇?);
+    // 批量添加本地音乐到播放列表
+    const addLocalPlaylistToQueue = async (localSongs, append = false) => {
+        console.log('[SongQueue] 添加本地播放列表:', localSongs.length, '首歌曲');
         
         try {
             let queueSongs = [];
@@ -237,7 +239,7 @@ export default function useLocalMusicQueue(t, musicQueueStore, currentSong, time
                     id: queueSongs.length + newSongs.length + 1,
                     hash: localHash,
                     name: item.displayName || item.name,
-                    author: item.author || '鏈煡鑹烘湳瀹?,
+                    author: item.author || '未知艺术家',
                     img: getLocalSongCover(item),
                     timeLength: item.timelen || (item.duration * 1000) || item.timeLength || 0,
                     url: item.url || '',
@@ -248,7 +250,8 @@ export default function useLocalMusicQueue(t, musicQueueStore, currentSong, time
                 newSongs.push(localSong);
             }
             
-            // 娣诲姞鍒伴槦鍒?            if (append) {
+            // 添加到队列
+            if (append) {
                 musicQueueStore.queue = [...queueSongs, ...newSongs].map((song, index) => ({
                     ...song,
                     id: index + 1
@@ -259,7 +262,7 @@ export default function useLocalMusicQueue(t, musicQueueStore, currentSong, time
             
             return newSongs;
         } catch (error) {
-            console.error('[SongQueue] 娣诲姞鏈湴鎾斁鍒楄〃澶辫触:', error);
+            console.error('[SongQueue] 添加本地播放列表失败:', error);
             return [];
         }
     };

@@ -22,7 +22,8 @@ export default function useSongQueue(t, musicQueueStore, queueList = null) {
     const cloudMusicQueue = useCloudMusicQueue(t, musicQueueStore, currentSong, timeoutId);
     const localMusicQueue = useLocalMusicQueue(t, musicQueueStore, currentSong, timeoutId);
 
-    // 娣诲姞涓嬩竴棣?    const addToNext = (hash, name, img, author, timeLength) => {
+    // 添加下一首
+    const addToNext = (hash, name, img, author, timeLength) => {
         const existingSongIndex = musicQueueStore.queue.findIndex(song => song.hash === hash);
         if (existingSongIndex !== -1 && typeof queueList?.value?.removeSongFromQueue === 'function') {
             queueList.value.removeSongFromQueue(existingSongIndex);
