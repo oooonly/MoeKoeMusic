@@ -195,7 +195,7 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
 
             // 设置URL
             if (response.url && response.url[1]) {
-                currentSong.value.url = `${import.meta.env.VITE_APP_API_URL}song/raw?targetUrl=${response.url[1]}`;
+                currentSong.value.url = `${import.meta.env.VITE_APP_API_URL}/song/raw?targetUrl=${response.url[1]}`;
                 currentSong.value.playHash = selectedCandidate.hash || hash;
                 currentSong.value.resolvedQuality = selectedCandidate.quality || '';
                 currentSong.value.qualityLabel = getQualityLabel(selectedCandidate.quality);
