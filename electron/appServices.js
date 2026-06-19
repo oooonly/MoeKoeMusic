@@ -9,9 +9,9 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { checkForUpdates } from './services/updater.js';
 import { Notification } from 'electron';
-import extensionManager from './extensions/extensionManager.js';
 import { t } from './language/i18n.js';
 import { bindExternalLinkHandler } from './services/externalLinkHandler.js';
+import customTrayMenuService from './services/customTrayMenuService.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const store = new Store();
 const { TouchBarLabel, TouchBarButton, TouchBarGroup, TouchBarSpacer } = TouchBar;
@@ -86,10 +86,6 @@ export function createWindow() {
             mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
         }
     }
-
-    mainWindow.webContents.once('dom-ready', () => {
-        extensionManager.loadChromeExtensions();
-    });
 
     mainWindow.webContents.on('dom-ready', () => {
         console.log('DOM Ready');
@@ -355,28 +351,46 @@ export function createTray(mainWindow, title = '') {
         }
     ]);
 
+    const useCustomTrayMenu = !!mainWindow && store.get('settings')?.customTrayMenu === 'custom';
+    const useLinuxCustomTrayMenu = process.platform === 'linux' && useCustomTrayMenu;
     switch (process.platform) {
         case 'linux':
+            if (useLinuxCustomTrayMenu) {
+                tray.on('click', () => {
+                    void customTrayMenuService.toggle();
+                });
+                break;
+            }
+            customTrayMenuService.hide();
             tray.setContextMenu(contextMenu);
             break;
         default:
             tray.on('right-click', () => {
+                if (useCustomTrayMenu) {
+                    void customTrayMenuService.toggle();
+                    return;
+                }
+                customTrayMenuService.hide();
                 tray.popUpContextMenu(contextMenu);
             });
     }
-    tray.on('click', () => {
-        if (!mainWindow.isVisible()) {
+    if (!useLinuxCustomTrayMenu) {
+        tray.on('click', () => {
+            customTrayMenuService.hide();
+            if (!mainWindow.isVisible()) {
+                mainWindow.show();
+            } else if (!mainWindow.isFocused()) {
+                mainWindow.show();
+                mainWindow.focus();
+            } else {
+                mainWindow.hide(); //大概率永远不会执行
+            }
+        });
+        tray.on('double-click', () => {
+            customTrayMenuService.hide();
             mainWindow.show();
-        } else if (!mainWindow.isFocused()) {
-            mainWindow.show();
-            mainWindow.focus();
-        } else {
-            mainWindow.hide(); //大概率永远不会执行
-        }
-    });
-    tray.on('double-click', () => {
-        mainWindow.show();
-    });
+        });
+    }
     return tray;
 }
 
@@ -644,11 +658,12 @@ export function registerShortcut() {
                 mainWindow.lyricsWindow = null;
                 new Notification({
                     title: t('desktop-lyrics-closed'),
-                    body: t('this-time-only'),
                     icon: getIconPath('logo.png')
                 }).show();
+                syncDesktopLyricsSetting('off');
             } else {
                 createLyricsWindow();
+                syncDesktopLyricsSetting('on');
             }
         }
         if (settings?.shortcuts?.toggleDesktopLyrics) {
@@ -665,6 +680,14 @@ export function registerShortcut() {
         });
     }
 }
+
+const syncDesktopLyricsSetting = (value) => {
+    const settings = store.get('settings') || {};
+    store.set('settings', {
+        ...settings,
+        desktopLyrics: value
+    });
+};
 
 // 播放启动问候语
 export function playStartupSound() {

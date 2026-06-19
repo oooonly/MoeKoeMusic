@@ -1,5 +1,26 @@
 import i18n from '@/utils/i18n';
 
+const appFontStyleId = 'moekoe-custom-font';
+const defaultFontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif";
+
+const escapeCssString = (value) => String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+export const applyCustomFont = (fontFamily) => {
+    if (typeof document === 'undefined') return;
+
+    document.getElementById(appFontStyleId)?.remove();
+    if (!fontFamily) return;
+
+    const safeFontFamily = escapeCssString(fontFamily);
+    const style = document.createElement('style');
+    style.id = appFontStyleId;
+    style.textContent = `
+body, html, button, input, textarea, select {
+    font-family: "${safeFontFamily}", ${defaultFontFamily} !important;
+}`;
+    document.head.appendChild(style);
+};
+
 export const applyColorTheme = (theme) => {
     let colors;
     if (theme === 'blue') {
@@ -71,12 +92,86 @@ export const getCover = (coverUrl, size) => {
     return coverUrl.replace("{size}", size);
 };
 
+export const getProfileBgColor = (src, tone = 0.52) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.referrerPolicy = 'no-referrer';
+    image.onload = () => {
+        try {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (!context) {
+                reject(new Error('Canvas context unavailable'));
+                return;
+            }
+            const sampleWidth = Math.max(8, Math.floor(image.naturalWidth * 0.12));
+            const sampleHeight = Math.max(8, image.naturalHeight);
+            canvas.width = 24;
+            canvas.height = 24;
+            context.drawImage(image, 0, 0, sampleWidth, sampleHeight, 0, 0, canvas.width, canvas.height);
+            const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+            let red = 0;
+            let green = 0;
+            let blue = 0;
+            let alphaTotal = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                const alpha = data[i + 3] / 255;
+                red += data[i] * alpha;
+                green += data[i + 1] * alpha;
+                blue += data[i + 2] * alpha;
+                alphaTotal += alpha;
+            }
+            if (!alphaTotal) {
+                reject(new Error('No visible pixels'));
+                return;
+            }
+            const averageRed = Math.round((red / alphaTotal) * tone);
+            const averageGreen = Math.round((green / alphaTotal) * tone);
+            const averageBlue = Math.round((blue / alphaTotal) * tone);
+            resolve(`rgb(${averageRed}, ${averageGreen}, ${averageBlue})`);
+        } catch (error) {
+            reject(error);
+        }
+    };
+    image.onerror = () => reject(new Error('Image load failed'));
+    image.src = src;
+});
+
 export const formatMilliseconds = (time) => {
     const milliseconds = time > 3600 ? time : time * 1000;
     const totalSeconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}分${seconds}秒`;
+};
+
+export const formatTimestampToAgo = (timestamp) => {
+    const ts = Number(timestamp);
+    if (!Number.isFinite(ts) || ts <= 0) return '';
+
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - Math.floor(ts);
+
+    if (diff <= 0) return '刚刚';
+    if (diff < 60) return `${diff}秒前`;
+
+    const minutes = Math.floor(diff / 60);
+    if (minutes < 60) return `${minutes}分钟前`;
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}小时前`;
+
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}天前`;
+
+    const weeks = Math.floor(days / 7);
+    if (weeks < 5) return `${weeks}周前`;
+
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}个月前`;
+
+    const years = Math.floor(months / 12);
+    return `${years}年前`;
 };
 
 export const requestMicrophonePermission = async () => {
@@ -163,6 +258,37 @@ export const openRegisterUrl = (registerUrl) => {
     } else {
         window.open(registerUrl, '_blank');
     }
+};
+
+export const openMvPlayer = async (router, hash, title = '视频播放') => {
+    const resolved = router.resolve({
+        path: '/video',
+        query: { hash, title }
+    });
+    const base = window.location.href.split('#')[0];
+    const href = resolved.href || '';
+    const fullUrl = href.startsWith('#')
+        ? `${base}${href}`
+        : `${base}#${href.startsWith('/') ? href : `/${href}`}`;
+
+    if (window.electronAPI) {
+        await window.electronAPI.openMvWindow(fullUrl);
+        return;
+    }
+
+    const width = 960;
+    const height = 620;
+    const left = Math.max(0, Math.round((window.screen.width - width) / 2));
+    const top = Math.max(0, Math.round((window.screen.height - height) / 2));
+    const features = `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no`;
+
+    const popup = window.open(fullUrl, 'moekoe-mv', features);
+    if (popup) {
+        popup.focus?.();
+        return;
+    }
+
+    await router.push(resolved);
 };
 
 // 分享

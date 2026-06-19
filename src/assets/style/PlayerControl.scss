@@ -32,6 +32,39 @@ $shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.12);
     transition: transform 0.6s ease;
 }
 
+.single-lyrics {
+    align-self: center;
+    position: relative;
+    width: 100%;
+    transform: translateY(18vh);
+
+    .line-group {
+        margin-bottom: 0;
+    }
+}
+
+.single-lyric-fade-enter-active,
+.single-lyric-fade-leave-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.single-lyric-fade-leave-active {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+}
+
+.single-lyric-fade-enter-from {
+    opacity: 0;
+    transform: translateY(8px);
+}
+
+.single-lyric-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+}
+
 .line-group {
     margin-bottom: 12px;
 }
@@ -42,7 +75,7 @@ $shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.12);
     border-radius: 10px;
     padding: 0 10px;
     width: fit-content;
-    transition: background-color 0.3s ease-in;
+    transition: color 0.24s ease, background-color 0.3s ease-in;
 
     &.left {
         text-align: left;
@@ -99,6 +132,29 @@ $shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.12);
 
 .highlight {
     background-position: 0%;
+}
+
+.line-highlight {
+    &.translated,
+    &.romanized {
+        color: var(--primary-color);
+    }
+
+    .char {
+        background-position: 0%;
+    }
+}
+
+#lyrics.line-highlight-mode {
+    .char {
+        color: #e3e3e3e8;
+        background: none;
+        transition: color 0.24s ease;
+    }
+
+    .line-highlight .char {
+        color: var(--primary-color);
+    }
 }
 
 .player-container {
@@ -205,44 +261,82 @@ $shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.12);
     transform: translateY(-2px);
 }
 
-.quality-menu {
+.player-menu {
     position: absolute;
-    bottom: calc(100% + 8px);
-    left: 0;
-    min-width: 110px;
+    bottom: 100%;
+    left: 50%;
+    box-sizing: border-box;
+    min-width: 130px;
+    margin-bottom: 8px;
     padding: 6px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: $shadow-soft;
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    z-index: 10;
+    border: 1px solid var(--background-color);
+    background: #fff;
+    border-radius: $radius-md;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    transform: translateX(-50%);
+    z-index: 1000;
 
-    &:is(.dark .quality-menu) {
-        background: #121212;
+    &::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: #fff;
     }
 }
 
-.quality-menu-item {
+.player-menu-item {
+    box-sizing: border-box;
     width: 100%;
+    display: flex;
+    align-items: center;
     border: none;
-    background: transparent;
-    text-align: left;
-    border-radius: 8px;
-    padding: 8px 10px;
+    border-radius: $radius-sm;
+    padding: 6px 10px;
     font-size: 13px;
-    color: #303133;
+    background: transparent;
+    color: var(--text-color);
     cursor: pointer;
+    white-space: nowrap;
+    text-align: left;
+    transition: background-color 0.2s;
 
-    &:hover,
+    &:hover {
+        background-color: var(--background-color);
+    }
+
     &.active {
-        background: var(--color-primary-light);
-        color: var(--color-primary);
+        background-color: var(--secondary-color);
+        color: var(--primary-text-color);
     }
 
     &.disabled {
         color: #909399;
         cursor: default;
+
+        &:hover {
+            background-color: transparent;
+        }
     }
+}
+
+.player-menu-enter-active,
+.player-menu-leave-active {
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.player-menu-enter-from,
+.player-menu-leave-to {
+    opacity: 0;
+    transform: translate(-50%, 4px);
+}
+
+.player-menu-enter-to,
+.player-menu-leave-from {
+    opacity: 1;
+    transform: translate(-50%, 0);
 }
 
 .fa-volume-up {
@@ -253,7 +347,6 @@ $shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.12);
     font-size: 0.9em;
     color: $text-light;
     width: auto;
-    max-width: 300px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -424,6 +517,20 @@ $shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.12);
     background-size: cover;
 }
 
+.lyrics-bg-image {
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+
+    &.active {
+        opacity: 1;
+    }
+}
+
 .lyrics-screen {
     position: fixed;
     bottom: 0;
@@ -436,6 +543,11 @@ $shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.12);
     justify-content: space-between;
     padding: 20px;
     background: #1616169c;
+    z-index: 1;
+
+    &.cover-background {
+        backdrop-filter: blur(1px);
+    }
 
     .progress-bar {
         flex-grow: 1;
@@ -737,42 +849,63 @@ $shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.12);
     display: inline-block;
 }
 
-.speed-menu {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--background-color);
-    border: 1px solid var(--background-color);
-    border-radius: $radius-sm;
-    margin-bottom: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
+.speed-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 
-    &::after {
-        content: '';
-        position: absolute;
-        top: 100%;
-        left: 50%;
-        transform: translateX(-50%);
-        border: 6px solid transparent;
-        border-top-color: var(--background-color);
+    i {
+        line-height: 1;
+        transform: translateY(-2px);
     }
 }
 
+.playback-mode {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+
+    &:hover .playback-mode-menu {
+        opacity: 1;
+        visibility: visible;
+        transform: translate(-50%, 0);
+        pointer-events: auto;
+        transition-delay: 0s;
+    }
+}
+
+.playback-mode-menu {
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-50%, 4px);
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s, visibility 0s 0.2s;
+}
+
+.playback-mode-option {
+    gap: 8px;
+
+    i,
+    .loop-icon {
+        width: 16px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+}
+
+.speed-menu {
+    min-width: 70px;
+}
+
 .speed-option {
-    padding: 6px 16px;
-    cursor: pointer;
-    white-space: nowrap;
-    color: var(--text-color);
-    transition: background-color 0.2s;
+    justify-content: center;
 
     &:hover {
-        background-color: var(--secondary-color);
+        background-color: var(--background-color);
     }
 
     &.active {
-        background-color: var(--primary-color);
+        background-color: var(--secondary-color);
         color: var(--primary-text-color);
     }
 }

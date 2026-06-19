@@ -3,7 +3,7 @@
         <div class="settings-sidebar">
             <div v-for="(section, sectionIndex) in settingSections" :key="sectionIndex" class="sidebar-item"
                 :class="{ active: activeTab === sectionIndex }" @click="activeTab = sectionIndex">
-                <i :class="getSectionIcon(section.title)"></i>
+                <i :class="section.icon"></i>
                 <span>{{ section.title }}</span>
             </div>
         </div>
@@ -14,10 +14,10 @@
                 <h3>{{ section.title }}</h3>
                 <ExtensionManager v-if="section.title === t('cha-jian')" />
                 <div v-else class="settings-cards">
-                    <div v-for="(item, itemIndex) in section.items" :key="itemIndex" class="setting-card"
+                    <div v-for="(item, itemIndex) in getVisibleItems(section)" :key="itemIndex" class="setting-card"
                         @click="item.action ? item.action(item.helpLink) : openSelection(item.key, item.helpLink)">
                         <div class="setting-card-header">
-                            <i :class="getItemIcon(item.key)"></i>
+                            <i :class="item.itemIcon || 'fas fa-sliders-h'"></i>
                             <span>{{ item.label }}</span>
                             <span v-if="item.showRefreshHint && showRefreshHint[item.key]" class="refresh-hint">
                                 {{ item.refreshHintText }}
@@ -49,9 +49,9 @@
                     :aria-label="$t('bang-zhu')">
                     <i class="fas fa-question-circle"></i>
                 </a>
-                <h3>{{ selectionTypeMap[selectionType].title }}</h3>
+                <h3>{{ getSettingItem(selectionType)?.selectionTitle }}</h3>
                 <ul v-if="selectionType !== 'font' && selectionType !== 'audioOutputDevice'">
-                    <li v-for="option in selectionTypeMap[selectionType].options" :key="option"
+                    <li v-for="option in getSettingItem(selectionType)?.options || []" :key="option.value"
                         @click="selectOption(option)">
                         {{ option.displayText }}
                     </li>
@@ -66,18 +66,14 @@
                     </li>
                 </ul>
 
-                <div v-if="selectionType === 'font'" class="api-settings-container" @focusout="handleFontFocusOut">
-                    <div class="api-setting-item">
-                        <label>{{ $t('zi-ti-url-di-zhi') }}</label>
-                        <input type="text" v-model="fontUrlInput" class="api-input"
-                            :placeholder="$t('qing-shu-ru-zi-ti-url-di-zhi')" />
-                    </div>
-                    <div class="api-setting-item">
-                        <label>{{ $t('zi-ti-ming-cheng') }}</label>
-                        <input type="text" v-model="fontFamilyInput" class="api-input"
-                            :placeholder="$t('qing-shu-ru-zi-ti-ming-cheng')" />
-                    </div>
-                </div>
+                <ul v-else-if="selectionType === 'font'" class="font-list">
+                    <li v-if="fontOptionsLoading">{{ $t('jia-zai-zhong') }}</li>
+                    <li v-else-if="fontOptions.length === 0">{{ $t('mo-ren-zi-ti') }}</li>
+                    <li v-else v-for="option in fontOptions" :key="option.value" :style="{ fontFamily: option.value }"
+                        @click="selectFontOption(option)">
+                        {{ option.displayText }}
+                    </li>
+                </ul>
 
                 <div v-if="selectionType === 'highDpi'" class="scale-slider-container">
                     <div class="scale-slider-label">{{ $t('suo-fang-yin-zi') }}: {{ dpiScale }} <span
@@ -174,12 +170,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, getCurrentInstance, onUnmounted, computed, reactive } from 'vue';
+import { ref, onMounted, getCurrentInstance, onUnmounted, reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { MoeAuthStore } from '../stores/store';
 import ExtensionManager from '@/components/ExtensionManager.vue';
-import { requestMicrophonePermission } from '../utils/utils';
+import { applyCustomFont, requestMicrophonePermission } from '../utils/utils';
 import { DEFAULT_API_BASE_URL, validateApiBaseUrl, testApiBaseUrl as testApiBaseUrlRequest } from '@/utils/apiBaseUrl';
+import { useSettingsConfig } from '@/config/settings';
+import { ONBOARDING_GUIDE_EVENT } from '@/config/onboardingGuide';
 
 const MoeAuth = MoeAuthStore();
 const { t } = useI18n();
@@ -189,575 +187,41 @@ const platform = ref('');
 const activeTab = ref(0);
 const defaultApiBaseUrl = DEFAULT_API_BASE_URL;
 
-// 设置配置
-const selectedSettings = ref({
-    searchMode: { displayText: '快速搜索', value: 'quick' },
-    language: { displayText: '🌏 ' + t('zi-dong'), value: '' },
-    themeColor: { displayText: t('shao-nv-fen'), value: 'pink' },
-    theme: { displayText: '☀️ ' + t('qian-se'), value: 'light' },
-    nativeTitleBar: { displayText: t('guan-bi'), value: 'off' },
-    quality: { displayText: '标准音质 - 128Kbps', value: '128' },
-    lyricsBackground: { displayText: t('da-kai'), value: 'on' },
-    desktopLyrics: { displayText: t('guan-bi'), value: 'off' },
-    statusBarLyrics: { displayText: t('guan-bi'), value: 'off' },
-    lyricsFontSize: { displayText: t('zhong'), value: '24px' },
-    lyricsTranslation: { displayText: t('da-kai'), value: 'on' },
-    lyricsAlign: { displayText: t('ju-zhong'), value: 'center' },
-    font: { displayText: t('mo-ren-zi-ti'), value: '' },
-    fontUrl: { displayText: t('mo-ren-zi-ti'), value: '' },
-    greetings: { displayText: t('kai-qi'), value: 'on' },
-    gpuAcceleration: { displayText: t('guan-bi'), value: 'off' },
-    minimizeToTray: { displayText: t('da-kai'), value: 'on' },
-    highDpi: { displayText: t('guan-bi'), value: 'off' },
-    dpiScale: { displayText: '1.0', value: '1.0' },
-    apiMode: { displayText: t('guan-bi'), value: 'off' },
-    touchBar: { displayText: t('guan-bi'), value: 'off' },
-    autoStart: { displayText: t('guan-bi'), value: 'off' },
-    startMinimized: { displayText: t('guan-bi'), value: 'off' },
-    preventAppSuspension: { displayText: t('guan-bi'), value: 'off' },
-    networkMode: { displayText: t('zhu-wang'), value: 'mainnet' },
-    startupPage: { displayText: t('shou-ye'), value: 'Index' },
-    proxy: { displayText: t('guan-bi'), value: 'off' },
-    proxyUrl: { displayText: '', value: '' },
-    apiBaseUrlMode: { displayText: '默认', value: 'default' },
-    apiBaseUrl: { displayText: '', value: '' },
-    dataSource: { displayText: t('gai-nian-ban-xuan-xiang'), value: 'concept' },
-    loudnessNormalization: { displayText: t('guan-bi'), value: 'off' },
-    pauseOnAudioOutputChange: { displayText: t('guan-bi'), value: 'off' },
-    audioOutputDevice: { displayText: '默认', value: 'default' },
+const {
+    settingSections,
+    shortcutConfigs
+} = useSettingsConfig(t, {
+    openShortcutSettings: () => openShortcutSettings(),
+    installPWA: () => installPWA(),
+    openOnboardingGuide: () => openOnboardingGuide()
 });
 
-// 设置分区配置
-const settingSections = computed(() => [
-    {
-        title: t('jie-mian'),
-        items: [
-            {
-                key: 'language',
-                label: t('yu-yan')
-            },
-            {
-                key: 'themeColor',
-                label: t('zhu-se-tiao'),
-                icon: '🎨 '
-            },
-            {
-                key: 'theme',
-                label: t('wai-guan')
-            },
-            {
-                key: 'searchMode',
-                label: '搜索模式'
-            },
-            {
-                key: 'nativeTitleBar',
-                label: t('native-title-bar'),
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao')
-            },
-            {
-                key: 'font',
-                label: t('zi-ti-she-zhi'),
-                showRefreshHint: true,
-                refreshHintText: t('shua-xin-hou-sheng-xiao'),
-                helpLink: 'https://music.moekoe.cn/guide/font-settings.html'
-            },
-            {
-                key: 'startupPage',
-                label: '启动页'
-            }
-        ]
-    },
-    {
-        title: t('sheng-yin'),
-        items: [
-            {
-                key: 'quality',
-                label: t('yin-zhi-xuan-ze'),
-                icon: '🎧 '
-            },
-            {
-                key: 'loudnessNormalization',
-                label: t('ping-heng-yin-pin-xiang-du'),
-                icon: '🎚️ ',
-                showRefreshHint: true,
-                refreshHintText: t('shua-xin-hou-sheng-xiao')
-            },
-            {
-                key: 'pauseOnAudioOutputChange',
-                label: '输出设备变化自动暂停',
-                icon: '🎧 ',
-                helpLink: 'https://music.moekoe.cn/guide/auto-pause-on-output-device-change.html'
-            },
-            {
-                key: 'audioOutputDevice',
-                label: '音频输出设备',
-                icon: '🔊 ',
-                helpLink: 'https://music.moekoe.cn/guide/audio-output-device.html'
-            },
-            {
-                key: 'greetings',
-                label: t('qi-dong-wen-hou-yu'),
-                icon: '👋 '
-            },
-            {
-                key: 'dataSource',
-                label: t('shu-ju-yuan'),
-                icon: '🔌 ',
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao'),
-                helpLink: 'https://music.moekoe.cn/guide/data-source.html'
-            }
-        ]
-    },
-    {
-        title: t('ge-ci'),
-        items: [
-            {
-                key: 'lyricsBackground',
-                label: t('xian-shi-ge-ci-bei-jing'),
-                showRefreshHint: true,
-                refreshHintText: t('shua-xin-hou-sheng-xiao')
-            },
-            {
-                key: 'lyricsFontSize',
-                label: t('ge-ci-zi-ti-da-xiao'),
-                showRefreshHint: true,
-                refreshHintText: t('shua-xin-hou-sheng-xiao')
-            },
-            {
-                key: 'desktopLyrics',
-                label: t('xian-shi-zhuo-mian-ge-ci')
-            },
-            {
-                key: 'statusBarLyrics',
-                label: t('zhuang-tai-lan-ge-ci'),
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao')
-            },
-            {
-                key: 'lyricsTranslation',
-                label: t('ge-ci-fan-yi')
-            },
-            {
-                key: 'lyricsAlign',
-                label: t('dui-qi-fang-shi'),
-            }
-        ]
-    },
-    {
-        title: t('cha-jian'),
-        items: []
-    },
-    {
-        title: t('xi-tong'),
-        items: [
-            {
-                key: 'gpuAcceleration',
-                label: t('jin-yong-gpu-jia-su-zhong-qi-sheng-xiao'),
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao')
-            },
-            {
-                key: 'highDpi',
-                label: t('shi-pei-gao-dpi'),
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao')
-            },
-            {
-                key: 'minimizeToTray',
-                label: t('guan-bi-shi-minimize-to-tray')
-            },
-            {
-                key: 'autoStart',
-                label: t('kai-ji-zi-qi-dong')
-            },
-            {
-                key: 'networkMode',
-                label: t('wang-luo-mo-shi'),
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao'),
-                helpLink: 'https://music.moekoe.cn/guide/network-modes.html'
-            },
-            {
-                key: 'startMinimized',
-                label: t('qi-dong-shi-zui-xiao-hua')
-            },
-            {
-                key: 'preventAppSuspension',
-                label: t('zu-zhi-xi-tong-xiu-mian'),
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao')
-            },
-            {
-                key: 'apiMode',
-                label: t('api-mo-shi'),
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao')
-            },
-            {
-                key: 'apiBaseUrlMode',
-                label: 'RPC地址',
-                showRefreshHint: true,
-                refreshHintText: t('shua-xin-hou-sheng-xiao'),
-                helpLink: 'https://music.moekoe.cn/guide/rpc-api-base-url.html'
-            },
-            {
-                key: 'touchBar',
-                label: 'TouchBar',
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao')
-            },
-            {
-                key: 'shortcuts',
-                label: t('quan-ju-kuai-jie-jian'),
-                customText: t('zi-ding-yi-kuai-jie-jian'),
-                action: openShortcutSettings
-            },
-            {
-                key: 'pwa',
-                label: t('pwa-app'),
-                customText: t('install'),
-                action: installPWA
-            },
-            {
-                key: 'proxy',
-                label: t('wang-luo-dai-li'),
-                showRefreshHint: true,
-                refreshHintText: t('zhong-qi-hou-sheng-xiao'),
-                helpLink: 'https://music.moekoe.cn/guide/proxy-settings.html'
-            },
-            {
-                key: 'log',
-                label: '日志',
-                customText: '操作'
-            }
-        ]
-    }
-]);
+const createSelectedSettings = (sections) => {
+    const selectedSettings = {};
 
-// 获取每个部分的图标
-const getSectionIcon = (title) => {
-    const iconMap = {
-        [t('jie-mian')]: 'fas fa-palette',
-        [t('sheng-yin')]: 'fas fa-volume-up',
-        [t('ge-ci')]: 'fas fa-music',
-        [t('cha-jian')]: 'fas fa-puzzle-piece',
-        [t('xi-tong')]: 'fas fa-cog'
-    };
-    return iconMap[title] || 'fas fa-cog';
+    sections.forEach(section => {
+        section.items.forEach(item => {
+            if (!Object.prototype.hasOwnProperty.call(item, 'defaultValue')) return;
+            const option = item.options?.find(option => option.value === item.defaultValue);
+            selectedSettings[item.key] = {
+                displayText: item.defaultDisplayText ?? option?.displayText ?? '',
+                value: item.defaultValue
+            };
+        });
+    });
+
+    return selectedSettings;
 };
 
-// 获取每个设置项的图标
-const getItemIcon = (key) => {
-    const iconMap = {
-        'language': 'fas fa-language',
-        'themeColor': 'fas fa-paint-brush',
-        'theme': 'fas fa-moon',
-        'searchMode': 'fas fa-search',
-        'nativeTitleBar': 'fas fa-window-maximize',
-        'font': 'fas fa-font',
-        'quality': 'fas fa-headphones',
-        'loudnessNormalization': 'fas fa-sliders-h',
-        'pauseOnAudioOutputChange': 'fas fa-exchange-alt',
-        'audioOutputDevice': 'fas fa-volume-up',
-        'greetings': 'fas fa-comment',
-        'lyricsBackground': 'fas fa-image',
-        'lyricsFontSize': 'fas fa-text-height',
-        'desktopLyrics': 'fas fa-desktop',
-        'statusBarLyrics': 'fas fa-align-justify',
-        'lyricsTranslation': 'fas fa-language',
-        'lyricsAlign': 'fas fa-align-center',
-        'gpuAcceleration': 'fas fa-microchip',
-        'highDpi': 'fas fa-expand',
-        'minimizeToTray': 'fas fa-window-minimize',
-        'autoStart': 'fas fa-power-off',
-        'startMinimized': 'fas fa-compress',
-        'preventAppSuspension': 'fas fa-clock',
-        'apiMode': 'fas fa-code',
-        'apiBaseUrlMode': 'fas fa-link',
-        'touchBar': 'fas fa-tablet-alt',
-        'shortcuts': 'fas fa-keyboard',
-        'pwa': 'fas fa-mobile-alt',
-        'proxy': 'fas fa-random',
-        'startupPage': 'fas fa-home',
-        log: 'fas fa-file-lines'
-    };
-    return iconMap[key] || 'fas fa-sliders-h';
-};
+const selectedSettings = ref(createSelectedSettings(settingSections.value));
 
 const isSelectionOpen = ref(false);
 const currentHelpLink = ref('');
 const selectionType = ref('');
-const fontUrlInput = ref('');
-const fontFamilyInput = ref('');
+const fontOptions = ref([]);
+const fontOptionsLoading = ref(false);
 
-// 选项配置
-const selectionTypeMap = {
-    language: {
-        title: t('xuan-ze-yu-yan'),
-        options: [
-            { displayText: '🇨🇳 简体中文', value: 'zh-CN' },
-            { displayText: '🇨🇳 繁體中文', value: 'zh-TW' },
-            { displayText: '🇺🇸 English', value: 'en' },
-            { displayText: '🇷🇺 Русский', value: 'ru' },
-            { displayText: '🇯🇵 日本語', value: 'ja' },
-            { displayText: '🇰🇷 한국어', value: 'ko' }
-        ]
-    },
-    themeColor: {
-        title: t('xuan-ze-zhu-se-tiao'),
-        options: [
-            { displayText: t('shao-nv-fen'), value: 'pink' },
-            { displayText: t('nan-nan-lan'), value: 'blue' },
-            { displayText: t('tou-ding-lv'), value: 'green' },
-            { displayText: t('mi-gan-cheng'), value: 'orange' }
-        ]
-    },
-    theme: {
-        title: t('xuan-ze-wai-guan'),
-        options: [
-            { displayText: '🌗 ' + t('zi-dong'), value: 'auto' },
-            { displayText: '☀️ ' + t('qian-se'), value: 'light' },
-            { displayText: '🌙 ' + t('shen-se'), value: 'dark' }
-        ]
-    },
-    searchMode: {
-        title: '搜索模式',
-        options: [
-            { displayText: '快速搜索', value: 'quick' },
-            { displayText: '推荐搜索', value: 'recommend' }
-        ]
-    },
-    nativeTitleBar: {
-        title: t('native-title-bar'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    quality: {
-        title: t('yin-zhi-xuan-ze'),
-        options: [
-            { displayText: '标准音质 - 128Kbps', value: '128' },
-            { displayText: '高品音质 - 320Kbps', value: '320' },
-            { displayText: 'FLAC 无损', value: 'flac' },
-            { displayText: 'Hi-Res 无损', value: 'high' },
-            { displayText: '蝰蛇全景', value: 'viper_atmos' },
-            { displayText: '蝰蛇超清', value: 'viper_clear' },
-            { displayText: '蝰蛇母带', value: 'viper_tape' }
-        ]
-    },
-    lyricsBackground: {
-        title: t('xian-shi-ge-ci-bei-jing'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    desktopLyrics: {
-        title: t('xian-shi-zhuo-mian-ge-ci'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    statusBarLyrics: {
-        title: t('zhuang-tai-lan-ge-ci'),
-        options: [
-            { displayText: t('da-kai') + t('jin-zhi-chi-mac'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    lyricsFontSize: {
-        title: t('ge-ci-zi-ti-da-xiao'),
-        options: [
-            { displayText: t('xiao'), value: '20px' },
-            { displayText: t('zhong'), value: '24px' },
-            { displayText: t('da'), value: '32px' }
-        ]
-    },
-    greetings: {
-        title: t('qi-dong-wen-hou-yu'),
-        options: [
-            { displayText: t('kai-qi'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    gpuAcceleration: {
-        title: t('jin-yong-gpu-jia-su-zhong-qi-sheng-xiao'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    minimizeToTray: {
-        title: t('guan-bi-shi-minimize-to-tray'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    highDpi: {
-        title: t('shi-pei-gao-dpi'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    lyricsTranslation: {
-        title: t('ge-ci-fan-yi'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    lyricsAlign: {
-        title: t('dui-qi-fang-shi'),
-        options: [
-            { displayText: t('ju-zuo'), value: 'left' },
-            { displayText: t('ju-zhong'), value: 'center' },
-        ]
-    },
-    dpiScale: {
-        title: t('suo-fang-yin-zi'),
-        options: [
-            { displayText: '1.0', value: '1.0' }
-        ]
-    },
-    font: {
-        title: t('zi-ti-she-zhi'),
-        options: [
-            { displayText: t('mo-ren-zi-ti'), value: '' }
-        ]
-    },
-    fontUrl: {
-        title: t('zi-ti-wen-jian-di-zhi'),
-        options: [
-            { displayText: t('mo-ren-zi-ti'), value: '' }
-        ]
-    },
-    apiMode: {
-        title: t('api-mo-shi'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    apiBaseUrlMode: {
-        title: 'RPC地址',
-        options: [
-            { displayText: '默认', value: 'default' },
-            { displayText: '自定义', value: 'custom' }
-        ]
-    },
-    touchBar: {
-        title: 'TouchBar',
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    autoStart: {
-        title: t('kai-ji-zi-qi-dong'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    startMinimized: {
-        title: t('qi-dong-shi-zui-xiao-hua'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    preventAppSuspension: {
-        title: t('zu-zhi-xi-tong-xiu-mian'),
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    networkMode: {
-        title: t('wang-luo-jie-dian'),
-        options: [
-            { displayText: t('zhu-wang'), value: 'mainnet' },
-            { displayText: t('ce-wang'), value: 'testnet' },
-            { displayText: t('kai-fa-wang'), value: 'devnet' }
-        ]
-    },
-    startupPage: {
-        title: '启动页',
-        options: [
-            { displayText: t('shou-ye'), value: 'Index' },
-            { displayText: t('fa-xian'), value: 'Discover' },
-            { displayText: t('yin-le-ku'), value: 'Library' }
-        ]
-    },
-    proxy: {
-        title: t('wang-luo-dai-li'),
-        options: [
-            { displayText: t('qi-yong'), value: 'on' },
-            { displayText: t('jin-yong'), value: 'off' }
-        ]
-    },
-    proxyUrl: {
-        title: t('dai-li-di-zhi'),
-        options: []
-    },
-    dataSource: {
-        title: t('shu-ju-yuan'),
-        options: [
-            { displayText: t('gai-nian-ban-xuan-xiang'), value: 'concept' },
-            { displayText: t('zheng-shi-ban'), value: 'official' }
-        ]
-    },
-    loudnessNormalization: {
-        title: t('ping-heng-yin-pin-xiang-du') + '(实验性)',
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    pauseOnAudioOutputChange: {
-        title: '输出设备变化自动暂停(实验性)',
-        options: [
-            { displayText: t('da-kai'), value: 'on' },
-            { displayText: t('guan-bi'), value: 'off' }
-        ]
-    },
-    audioOutputDevice: {
-        title: '音频输出设备(实验性)',
-        options: []
-    },
-    log: {
-        title: '日志',
-        options: [
-            { displayText: '打开目录', value: 'open-path' },
-            { displayText: '导出日志', value: 'export-log' },
-        ]
-    }
-};
-
-const showRefreshHint = ref({
-    nativeTitleBar: false,
-    lyricsBackground: false,
-    lyricsFontSize: false,
-    lyricsAlign: false,
-    gpuAcceleration: false,
-    highDpi: false,
-    font: false,
-    touchBar: false,
-    preventAppSuspension: false,
-    networkMode: false,
-    apiMode: false,
-    apiBaseUrlMode: false,
-    proxy: false,
-    dataSource: false,
-    statusBarLyrics: false,
-    log: false,
-});
+const showRefreshHint = ref({});
 
 const audioOutputDeviceOptions = ref([]);
 const audioOutputDevicesLoading = ref(false);
@@ -816,19 +280,40 @@ const loadAudioOutputDevices = async () => {
     }
 };
 
+const loadLocalFonts = async () => {
+    fontOptionsLoading.value = true;
+
+    try {
+        if (!window.queryLocalFonts) {
+            fontOptions.value = [];
+            return;
+        }
+
+        const fonts = await window.queryLocalFonts();
+        const families = [...new Set(fonts.map(font => font.family).filter(Boolean))].sort((a, b) =>
+            a.localeCompare(b)
+        );
+        fontOptions.value = [
+            { displayText: t('mo-ren-zi-ti'), value: '' },
+            ...families.map(family => ({ displayText: family, value: family }))
+        ];
+    } catch {
+        fontOptions.value = [];
+    } finally {
+        fontOptionsLoading.value = false;
+    }
+};
+
 const openSelection = (type, helpLink) => {
     isSelectionOpen.value = true;
     selectionType.value = type;
-    currentHelpLink.value = helpLink || selectionTypeMap[type]?.helpLink || '';
+    currentHelpLink.value = helpLink || getSettingItem(type)?.helpLink || '';
 
     if (type === 'highDpi') {
         dpiScale.value = parseFloat(selectedSettings.value.dpiScale?.value || '1.0');
     }
 
-    if (type === 'font') {
-        fontUrlInput.value = selectedSettings.value.fontUrl?.value || '';
-        fontFamilyInput.value = selectedSettings.value.font?.value || '';
-    }
+    if (type === 'font') void loadLocalFonts();
 
     if (type === 'proxy') {
         proxyForm.url = selectedSettings.value.proxyUrl?.value || '';
@@ -855,133 +340,151 @@ const openHelpLink = () => {
     }
 };
 
+const getSettingItem = (key) => {
+    for (const section of settingSections.value) {
+        const item = section.items.find(item => item.key === key);
+        if (item) return item;
+    }
+    return null;
+};
+
+const getVisibleItems = (section) => section.items.filter(item => !item.hidden && !getUnavailableSettingText(item));
+
+const markRefreshHint = (key) => {
+    if (getSettingItem(key)?.showRefreshHint) {
+        showRefreshHint.value[key] = true;
+    }
+};
+
+const shouldKeepSelectionOpen = (key) => {
+    return settingSections.value.some(section => section.items.some(item =>
+        item.keepOpen && item.key === key
+    ));
+};
+
+const getUnavailableSettingText = (item) => {
+    const available = item?.available?.toLowerCase();
+    if (!available) return '';
+    const currentPlatform = isElectron() ? window.electron.platform : 'web';
+    if (available === currentPlatform || available === 'client' && isElectron()) return '';
+    return item.unavailableText || t('fei-ke-hu-duan-huan-jing-wu-fa-qi-yong');
+};
+
+const selectActions = {
+    applyThemeColor: (option) => proxy.$applyColorTheme(option.value),
+    applyTheme: (option) => proxy.$setTheme(option.value),
+    applyLanguage: (option) => {
+        proxy.$i18n.locale = option.value;
+        document.documentElement.lang = option.value;
+    },
+    checkQualityAuth: () => {
+        if (!MoeAuth.isAuthenticated) {
+            window.$modal.alert(t('gao-pin-zhi-yin-le-xu-yao-deng-lu-hou-cai-neng-bo-fango'));
+        }
+    },
+    saveDpiScale: () => {
+        selectedSettings.value.dpiScale = {
+            value: dpiScale.value.toString(),
+            displayText: dpiScale.value.toString()
+        };
+    },
+    toggleDesktopLyrics: (option) => {
+        const action = option.value === 'on' ? 'display-lyrics' : 'close-lyrics';
+        window.electron.ipcRenderer.send('desktop-lyrics-action', action);
+    },
+    dispatchLoudnessNormalization: (option) => {
+        window.dispatchEvent(new CustomEvent('loudness-normalization-change', {
+            detail: { enabled: option.value === 'on' }
+        }));
+    },
+    updateAudioOutputWatch: async (option) => {
+        if (option.value === 'on') {
+            const granted = await requestMicrophonePermission();
+            if (!granted) {
+                selectedSettings.value.pauseOnAudioOutputChange = {
+                    displayText: t('guan-bi'),
+                    value: 'off'
+                };
+                window.dispatchEvent(new CustomEvent('audio-output-device-watch-change', {
+                    detail: { enabled: false }
+                }));
+                window.$modal.alert('音频权限申请失败，无法启用该功能');
+                return;
+            }
+        }
+
+        window.dispatchEvent(new CustomEvent('audio-output-device-watch-change', {
+            detail: { enabled: option.value === 'on' }
+        }));
+    },
+    resetApiBaseUrl: (option) => {
+        if (option.value === 'default') {
+            selectedSettings.value.apiBaseUrl = { displayText: '', value: '' };
+        }
+    },
+    dispatchAudioOutputDevice: (option) => {
+        window.dispatchEvent(new CustomEvent('audio-output-device-change', {
+            detail: { deviceId: option.value }
+        }));
+    },
+    handleLogAction: async (option) => {
+        let result;
+        switch (option.value) {
+            case 'open-path':
+                result = await window.electronAPI.openLogPath();
+                break;
+            case 'export-log':
+                result = await window.electronAPI.exportLog();
+                break;
+            default:
+                break;
+        }
+        if (result?.error) {
+            console.error(`日志操作 ${option.value} 失败:`, result.error);
+            window.$modal.alert(`日志操作失败，详细信息请查看控制台`);
+        }
+        if (option.value === 'export-log' && result?.filePath) {
+            await window.$modal.alert(`日志(已脱敏)已导出到:\n${result.filePath}`);
+        }
+    }
+};
+
+const runSelectAction = async (item, option) => {
+    if (!item?.selectAction) return;
+    await selectActions[item.selectAction]?.(option);
+};
+
 const selectOption = async (option) => {
-    const electronFeatures = ['desktopLyrics', 'statusBarLyrics', 'gpuAcceleration', 'minimizeToTray', 'highDpi', 'nativeTitleBar', 'touchBar', 'autoStart', 'startMinimized', 'preventAppSuspension', 'networkMode', 'poxySettings', 'apiMode', 'dataSource', 'statusBarLyrics', 'log'];
-    if (!isElectron() && electronFeatures.includes(selectionType.value)) {
-        window.$modal.alert(t('fei-ke-hu-duan-huan-jing-wu-fa-qi-yong'));
-        return;
-    }
-    if (selectionType.value == 'touchBar' && window.electron.platform != 'darwin') {
-        window.$modal.alert(t('fei-mac-bu-zhi-chi-touchbar'));
-        return;
-    }
-    if (selectionType.value == 'statusBarLyrics' && window.electron.platform != 'darwin') {
-        window.$modal.alert(t('zhuang-tai-lan-ge-ci-jin-zhi-chi-mac'));
+    const settingItem = getSettingItem(selectionType.value);
+    const unavailableText = getUnavailableSettingText(settingItem);
+    if (unavailableText) {
+        window.$modal.alert(unavailableText);
         return;
     }
     selectedSettings.value[selectionType.value] = option;
-    const actions = {
-        'themeColor': () => proxy.$applyColorTheme(option.value),
-        'theme': () => proxy.$setTheme(option.value),
-        'language': () => {
-            proxy.$i18n.locale = option.value;
-            document.documentElement.lang = option.value;
-        },
-        'quality': () => {
-            if (!MoeAuth.isAuthenticated) {
-                window.$modal.alert(t('gao-pin-zhi-yin-le-xu-yao-deng-lu-hou-cai-neng-bo-fango'));
-                return;
-            }
-        },
-        'highDpi': () => {
-            selectedSettings.value.dpiScale = {
-                value: dpiScale.value.toString(),
-                displayText: dpiScale.value.toString()
-            };
-        },
-        'desktopLyrics': () => {
-            const action = option.value === 'on' ? 'display-lyrics' : 'close-lyrics';
-            window.electron.ipcRenderer.send('desktop-lyrics-action', action);
-        },
-        'loudnessNormalization': () => {
-            // 触发响度规格化开关变更事件
-            window.dispatchEvent(new CustomEvent('loudness-normalization-change', {
-                detail: { enabled: option.value === 'on' }
-            }));
-        },
-        'pauseOnAudioOutputChange': async () => {
-            if (option.value === 'on') {
-                const granted = await requestMicrophonePermission();
-                if (!granted) {
-                    selectedSettings.value.pauseOnAudioOutputChange = {
-                        displayText: t('guan-bi'),
-                        value: 'off'
-                    };
-                    window.dispatchEvent(new CustomEvent('audio-output-device-watch-change', {
-                        detail: { enabled: false }
-                    }));
-                    window.$modal.alert('音频权限申请失败，无法启用该功能');
-                    return;
-                }
-            }
-
-            window.dispatchEvent(new CustomEvent('audio-output-device-watch-change', {
-                detail: { enabled: option.value === 'on' }
-            }));
-        },
-        'apiBaseUrlMode': () => {
-            if (option.value === 'default') {
-                selectedSettings.value.apiBaseUrl = { displayText: '', value: '' };
-            }
-        },
-        'audioOutputDevice': async () => {
-            window.dispatchEvent(new CustomEvent('audio-output-device-change', {
-                detail: { deviceId: option.value }
-            }));
-        },
-        log: async () => {
-            let result;
-            switch (option.value) {
-                case 'open-path':
-                    result = await window.electronAPI.openLogPath();
-                    break;
-                case 'export-log':
-                    result = await window.electronAPI.exportLog();
-                    break;
-                default:
-                    break;
-            }
-            if (result?.error) {
-                console.error(`日志操作 ${option.value} 失败:`, result.error);
-                window.$modal.alert(`日志操作失败，详细信息请查看控制台`);
-            }
-            if (option.value === 'export-log' && result?.filePath) {
-                await window.$modal.alert(`日志(已脱敏)已导出到:\n${result.filePath}`);
-            }
-        }
-    };
-    await actions[selectionType.value]?.();
+    await runSelectAction(settingItem, option);
     saveSettings();
-    if (!['apiMode', 'font', 'fontUrl', 'proxy', 'apiBaseUrlMode'].includes(selectionType.value)) closeSelection();
-    const refreshHintTypes = ['nativeTitleBar', 'lyricsBackground', 'lyricsFontSize', 'gpuAcceleration', 'highDpi', 'apiMode', 'apiBaseUrlMode', 'touchBar', 'preventAppSuspension', 'networkMode', 'font', 'proxy', 'dataSource', 'loudnessNormalization', 'statusBarLyrics'];
-    if (refreshHintTypes.includes(selectionType.value)) {
-        showRefreshHint.value[selectionType.value] = true;
-    }
+    if (!shouldKeepSelectionOpen(selectionType.value)) closeSelection();
+    markRefreshHint(selectionType.value);
 };
 
-const updateFontSetting = async (key) => {
-    const prevType = selectionType.value;
-    const value = key === 'font' ? (fontFamilyInput.value || '') : (fontUrlInput.value || '');
-    const displayText = key === 'font' ? (value || t('mo-ren-zi-ti')) : (value || t('mo-ren-zi-ti'));
-    selectionType.value = key;
-    await selectOption({ displayText, value });
-    selectionType.value = prevType;
-};
-
-const handleFontFocusOut = async (e) => {
-    const container = e.currentTarget;
-    if (container && e.relatedTarget && container.contains(e.relatedTarget)) return;
-    await updateFontSetting('fontUrl');
-    await updateFontSetting('font');
+const selectFontOption = (option) => {
+    selectedSettings.value.font = {
+        displayText: option.displayText,
+        value: option.value
+    };
+    applyCustomFont(option.value);
+    saveSettings();
+    closeSelection();
+    markRefreshHint('font');
 };
 
 const isElectron = () => {
     return typeof window !== 'undefined' && typeof window.electron !== 'undefined';
 };
 const saveSettings = () => {
-    const ignoreKeys = ['log'];
     const settingsToSave = Object.fromEntries(
-        Object.entries(selectedSettings.value).map(([key, setting]) => !ignoreKeys.includes(key) && [key, setting.value] || [])
+        Object.entries(selectedSettings.value).map(([key, setting]) => [key, setting.value])
     );
     settingsToSave.shortcuts = shortcuts.value;
     localStorage.setItem('settings', JSON.stringify(settingsToSave));
@@ -1003,8 +506,9 @@ onMounted(() => {
         for (const key in savedSettings) {
             if (key === 'shortcuts') continue;
             if (key === 'audioOutputDevice') continue;
+            const settingItem = getSettingItem(key);
             if (key === 'quality') {
-                const option = selectionTypeMap[key].options.find(option => option.value === savedSettings[key]) || selectionTypeMap[key].options[0];
+                const option = settingItem.options.find(option => option.value === savedSettings[key]) || settingItem.options[0];
                 selectedSettings.value[key] = { ...option };
                 continue;
             }
@@ -1021,6 +525,19 @@ onMounted(() => {
                 selectedSettings.value[key] = { displayText: '', value: value };
                 continue;
             }
+            if (key === 'dpiScale') {
+                const value = savedSettings[key] || '1.0';
+                selectedSettings.value[key] = { displayText: value, value: value };
+                continue;
+            }
+            if (key === 'font') {
+                const value = savedSettings[key] || '';
+                selectedSettings.value[key] = {
+                    displayText: value || t('mo-ren-zi-ti'),
+                    value: value
+                };
+                continue;
+            }
             if (key === 'proxyUrl') {
                 const value = savedSettings[key];
                 selectedSettings.value[key] = {
@@ -1029,28 +546,20 @@ onMounted(() => {
                 };
                 continue;
             }
-            if (selectionTypeMap[key] && selectionTypeMap[key].options) {
-                if (key === 'font') {
-                    const value = savedSettings[key];
-                    selectedSettings.value[key] = {
-                        displayText: value || t('mo-ren-zi-ti'),
-                        value: value
-                    };
-                } else {
-                    // Always get displayText from current translation, not from localStorage
-                    const option = selectionTypeMap[key].options.find(
-                        (opt) => opt.value === savedSettings[key]
-                    );
-                    const displayText = option?.displayText || '🌏 ' + t('zi-dong');
-                    selectedSettings.value[key] = { displayText, value: savedSettings[key] };
-                }
+            if (settingItem?.options) {
+                // Always get displayText from current translation, not from localStorage
+                const option = settingItem.options.find(
+                    (opt) => opt.value === savedSettings[key]
+                );
+                const displayText = option?.displayText || '🌏 ' + t('zi-dong');
+                selectedSettings.value[key] = { displayText, value: savedSettings[key] };
             }
         }
     }
     if (savedSettings?.shortcuts) {
         shortcuts.value = savedSettings.shortcuts;
     } else {
-        shortcuts.value = Object.entries(shortcutConfigs.value).reduce((acc, [key, config]) => {
+        shortcuts.value = Object.entries(shortcutConfigs).reduce((acc, [key, config]) => {
             acc[key] = config.defaultValue;
             return acc;
         }, {});
@@ -1058,6 +567,9 @@ onMounted(() => {
     if (isElectron()) {
         appVersion.value = localStorage.getItem('version');
         platform.value = window.electron.platform;
+    } else {
+        appVersion.value = __VERSION__ || '';
+        platform.value = 'Web';
     }
 
     if (savedSettings?.audioOutputDevice !== undefined) {
@@ -1121,7 +633,7 @@ const saveApiBaseUrl = () => {
         selectedSettings.value.apiBaseUrl = { displayText: '', value: value };
     }
     saveSettings();
-    showRefreshHint.value.apiBaseUrlMode = true;
+    markRefreshHint('apiBaseUrlMode');
     closeSelection();
 };
 
@@ -1226,52 +738,11 @@ const saveProxy = () => {
     closeSelection();
 };
 
-const shortcutConfigs = ref({
-    mainWindow: {
-        label: t('xian-shi-yin-cang-zhu-chuang-kou'),
-        defaultValue: 'Ctrl+Shift+S'
-    },
-    quitApp: {
-        label: t('tui-chu-zhu-cheng-xu'),
-        defaultValue: 'Ctrl+Q'
-    },
-    prevTrack: {
-        label: t('shang-yi-shou'),
-        defaultValue: 'Alt+Ctrl+Left'
-    },
-    nextTrack: {
-        label: t('xia-yi-shou'),
-        defaultValue: 'Alt+Ctrl+Right'
-    },
-    playPause: {
-        label: t('zan-ting-bo-fang'),
-        defaultValue: 'Alt+Ctrl+Space'
-    },
-    volumeUp: {
-        label: t('yin-liang-zeng-jia'),
-        defaultValue: 'Alt+Ctrl+Up'
-    },
-    volumeDown: {
-        label: t('yin-liang-jian-xiao'),
-        defaultValue: 'Alt+Ctrl+Down'
-    },
-    mute: {
-        label: t('jing-yin'),
-        defaultValue: 'Alt+Ctrl+M'
-    },
-    like: {
-        label: t('tian-jia-wo-xi-huan'),
-        defaultValue: 'Alt+Ctrl+L'
-    },
-    mode: {
-        label: t('qie-huan-bo-fang-mo-shi'),
-        defaultValue: 'Alt+Ctrl+P'
-    },
-    toggleDesktopLyrics: {
-        label: t('xian-shi-yin-cang-zhuo-mian-ge-ci'),
-        defaultValue: 'Alt+Ctrl+D'
-    }
-});
+const openOnboardingGuide = () => {
+    window.dispatchEvent(new CustomEvent(ONBOARDING_GUIDE_EVENT, {
+        detail: { reset: true }
+    }));
+};
 
 const openShortcutSettings = () => {
     showShortcutModal.value = true;
@@ -1909,7 +1380,8 @@ $shadow-medium: rgba(0, 0, 0, 0.18);
     color: $text-muted;
 }
 
-.api-settings-container {
+.api-settings-container,
+.proxy-settings-container {
     display: flex;
     flex-direction: column;
     align-items: center;

@@ -6,9 +6,17 @@
                 :src="isArtist ? ($getCover(detail.sizable_avatar, 480)) : (detail.pic ? $getCover(detail.pic, 480) : './assets/images/live.png')" />
             <div class="info">
                 <h1 class="title">{{ isArtist ? detail.author_name : detail.name }}</h1>
-                <p class="subtitle" v-if="!isArtist && !isAlbum">{{ detail.publish_date }} | {{
-                    detail.list_create_username }}</p>
-                <p class="subtitle" v-if="isAlbum">{{ detail.publish_date }}</p>
+                <p class="subtitle" v-if="!isArtist && !isAlbum">
+                    <span :title="detail.publish_date ? `创建于 ${detail.publish_date}` : ''">
+                        {{ formatTimestampToAgo(detail.update_time) }}
+                    </span>
+                    | {{ detail.list_create_username }}
+                </p>
+                <p class="subtitle" v-else-if="isAlbum">
+                    <span :title="detail.publish_date ? `创建于 ${detail.publish_date}` : ''">
+                        {{ formatTimestampToAgo(detail.update_time) }}
+                    </span>
+                </p>
                 <div class="stats" v-if="isArtist">
                     <span>歌曲: {{ detail.song_count }}</span>
                     <span>专辑: {{ detail.album_count }}</span>
@@ -132,7 +140,7 @@
                 :item-size="viewMode === 'list' ? 50 : 70" class="track-list" key-field="hash" @scroll="handleScroll">
                 <template #default="{ item, index }">
                     <div class="li" :key="item.hash"
-                        :class="{ 'cover-view': viewMode === 'grid', 'selected': selectedTracks.includes(index) }"
+                        :class="{ 'cover-view': viewMode === 'grid', 'selected': batchSelectionMode && selectedTracks.includes(index) }"
                         @click="batchSelectionMode ? selectTrack(index, $event) : playSong(item.hash, item.name, item.cover, item.author)"
                         @contextmenu.prevent="showContextMenu($event, item)">
 
@@ -211,7 +219,7 @@ import { get } from '../utils/request';
 import { useRoute, useRouter } from 'vue-router';
 import { MoeAuthStore } from '../stores/store';
 import { useI18n } from 'vue-i18n';
-import { share } from '@/utils/utils';
+import { share, formatTimestampToAgo } from '@/utils/utils';
 
 const playlistSelect = ref(null);
 const { t } = useI18n();
@@ -290,6 +298,12 @@ const selectedTracks = ref([]);
 let lastSelectedIndex = -1;
 const songs = ref([]);
 
+const clearBatchSelection = () => {
+    selectedTracks.value = [];
+    lastSelectedIndex = -1;
+    isBatchMenuVisible.value = false;
+};
+
 // 排序状态
 const sortField = ref('');
 const sortOrder = ref('asc');
@@ -329,6 +343,10 @@ onBeforeUnmount(() => {
 
 watch(() => [route.query.global_collection_id, route.query.singerid, route.query.albumid], () => {
     loadData();
+});
+
+watch(batchSelectionMode, (value) => {
+    if (!value) clearBatchSelection();
 });
 
 const loadData = async () => {
@@ -377,6 +395,7 @@ const getAlbumInfo = async () => {
                 name: albumData.album_name || '',
                 pic: albumData.sizable_cover || albumData.cover || '',
                 publish_date: albumData.publish_date || '',
+                update_time: albumData.update_time || 0,
                 intro: albumData.intro || '',
                 song_count: 0, // 专辑详情接口没有返回歌曲数量，从歌曲列表接口获取
                 id: route.query.albumid
@@ -725,11 +744,21 @@ const handleScroll = (event) => {
 };
 
 // 搜索歌曲
+const loadAllRemainingTracks = async () => {
+    while (hasMore.value) {
+        if (isLoadingMore.value) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            continue;
+        }
+        await loadMoreTracks();
+    }
+};
+
 const searchTracks = async () => {
     if (hasMore.value) {
         isSearching.value = true;
         try {
-            await loadAndAppendRemainingTracks();
+            await loadAllRemainingTracks();
         } finally {
             isSearching.value = false;
         }
@@ -1040,7 +1069,7 @@ const sortTracks = async (field) => {
     if (hasMore.value) {
         isSearching.value = true;
         try {
-            await loadAndAppendRemainingTracks();
+            await loadAllRemainingTracks();
         } finally {
             isSearching.value = false;
         }

@@ -27,19 +27,21 @@
                         >
                             {{ currentSong.qualityLabel }}
                         </button>
-                        <div v-if="qualityMenuOpen && canSwitchQuality" class="quality-menu">
-                            <div v-if="!currentSong?.qualityOptions?.length" class="quality-menu-item disabled">暂无可选音质</div>
-                            <button
-                                v-for="option in currentSong.qualityOptions"
-                                :key="`${option.value}-${option.hash}`"
-                                type="button"
-                                class="quality-menu-item"
-                                :class="{ active: isCurrentQualityOption(option) }"
-                                @click.stop="switchQuality(option)"
-                            >
-                                {{ option.label }}
-                            </button>
-                        </div>
+                        <transition name="player-menu">
+                            <div v-if="qualityMenuOpen && canSwitchQuality" class="player-menu quality-menu">
+                                <div v-if="!currentSong?.qualityOptions?.length" class="player-menu-item disabled">暂无可选音质</div>
+                                <button
+                                    v-for="option in currentSong.qualityOptions"
+                                    :key="`${option.value}-${option.hash}`"
+                                    type="button"
+                                    class="player-menu-item"
+                                    :class="{ active: isCurrentQualityOption(option) }"
+                                    @click.stop="switchQuality(option)"
+                                >
+                                    {{ option.label }}
+                                </button>
+                            </div>
+                        </transition>
                     </div>
                 </div>
                 <div class="artist" @click.stop="searchSong(currentSong.author)">{{ currentSong?.author || "MoeJue" }}</div>
@@ -59,15 +61,17 @@
                 <button class="extra-btn" :title="t('zhuo-mian-ge-ci')" v-if="isElectron()" @click="desktopLyrics"><i
                         class="fas">词</i></button>
                 <div class="playback-speed">
-                    <button class="extra-btn" @click="toggleSpeedMenu" :title="t('bo-fang-su-du')">
+                    <button class="extra-btn speed-btn" @click="toggleSpeedMenu" :title="t('bo-fang-su-du')">
                         <i class="fas fa-tachometer-alt"></i>
                     </button>
-                    <div v-if="showSpeedMenu" class="speed-menu">
-                        <div v-for="speed in playbackSpeeds" :key="speed" class="speed-option"
-                            :class="{ active: currentSpeed === speed }" @click="changePlaybackSpeed(speed)">
-                            {{ speed }}x
+                    <transition name="player-menu">
+                        <div v-if="showSpeedMenu" class="player-menu speed-menu">
+                            <div v-for="speed in playbackSpeeds" :key="speed" class="player-menu-item speed-option"
+                                :class="{ active: currentSpeed === speed }" @click="changePlaybackSpeed(speed)">
+                                {{ speed }}x
+                            </div>
                         </div>
-                    </div>
+                    </transition>
                 </div>
                 <button class="extra-btn" :title="t('wo-xi-huan')" @click="playlistSelect.toLike()"><i
                         class="fas fa-heart"></i></button>
@@ -75,14 +79,34 @@
                         class="fas fa-add"></i></button>
                 <button class="extra-btn" :title="t('fen-xiang-ge-qu')" @click="share(currentSong.name, currentSong.hash)"><i
                         class="fas fa-share"></i></button>
-                <button class="extra-btn" @click="togglePlaybackMode">
-                    <i v-if="currentPlaybackModeIndex != '2'" :class="currentPlaybackMode.icon"
-                        :title="currentPlaybackMode.title"></i>
-                    <span v-else class="loop-icon" :title="currentPlaybackMode.title">
-                        <i class="fas fa-repeat"></i>
-                        <sup>1</sup>
-                    </span>
-                </button>
+                <div class="playback-mode">
+                    <button class="extra-btn" @click="togglePlaybackMode">
+                        <i v-if="currentPlaybackModeIndex != '2'" :class="currentPlaybackMode.icon"
+                            :title="currentPlaybackMode.title"></i>
+                        <span v-else class="loop-icon" :title="currentPlaybackMode.title">
+                            <i class="fas fa-repeat"></i>
+                            <sup>1</sup>
+                        </span>
+                    </button>
+                    <div class="player-menu playback-mode-menu">
+                        <button
+                            v-for="(mode, index) in playbackModes"
+                            :key="mode.title"
+                            type="button"
+                            class="player-menu-item playback-mode-option"
+                            :class="{ active: currentPlaybackModeIndex === index }"
+                            :title="mode.title"
+                            @click.stop="setPlaybackMode(index)"
+                        >
+                            <i v-if="index !== 2" :class="mode.icon"></i>
+                            <span v-else class="loop-icon">
+                                <i class="fas fa-repeat"></i>
+                                <sup>1</sup>
+                            </span>
+                            <span>{{ mode.title }}</span>
+                        </button>
+                    </div>
+                </div>
                 <button class="extra-btn" :title="t('bo-fang-lie-biao')" @click="queueList.openQueue()"><i class="fas fa-list"></i></button>
                 <!-- 音量控制 -->
                 <div class="volume-control" @wheel="handleVolumeScroll">
@@ -102,12 +126,22 @@
 
     <!-- 全屏歌词界面 -->
     <transition name="slide-up">
-        <div v-if="showLyrics" class="lyrics-bg"
-            :style="(lyricsBackground == 'on' ? ({ backgroundImage: `url(${currentSong?.img || 'https://random.MoeJue.cn/randbg.php'})` }) : ({ background: 'var(--secondary-color)' }))">
-            <div class="lyrics-screen">
+        <div v-if="showLyrics" class="lyrics-bg" :style="lyricsBackgroundStyle">
+            <template v-if="lyricsBackground === 'cover'">
+                <div
+                    v-for="(image, index) in lyricsBackgroundImages"
+                    :key="image"
+                    class="lyrics-bg-image"
+                    :class="{ active: index === lyricsBackgroundImageIndex }"
+                    :style="{ backgroundImage: `url(${image})` }"
+                ></div>
+            </template>
+            <div class="lyrics-screen" :class="{ 'cover-background': lyricsBackground === 'cover' }">
                 <div class="close-btn">
                     <i class="fas fa-chevron-down" @click="toggleLyrics(currentSong.hash, currentTime)"></i>
                 </div>
+                <FullscreenLyricsSettings v-model="fullscreenLyricsSettings" @change="handleFullscreenLyricsSettingsChange" />
+
                 <div class="lyrics-mode-btn" v-if="hasMultiLyricsMode" @click="switchLyricsMode" :title="lyricsMode === 'translation' ? t('qie-huan-dao-yin-yi') : t('qie-huan-dao-fan-yi')">
                     <i class="fas fa-language"></i>
                 </div>
@@ -164,29 +198,66 @@
                         <button class="control-btn" :title="t('xia-yi-shou')" @click="playSongFromQueue('next')">
                             <i class="fas fa-step-forward"></i>
                         </button>
-                        <button class="control-btn" :title="t('qie-huan-bo-fang-mo-shi')" @click="togglePlaybackMode">
-                            <i v-if="currentPlaybackModeIndex != '2'" :class="currentPlaybackMode.icon" :title="currentPlaybackMode.title"></i>
-                            <span v-else class="loop-icon" :title="currentPlaybackMode.title">
-                                <i class="fas fa-repeat"></i>
-                                <sup>1</sup>
-                            </span>
-                        </button>
+                        <div class="playback-mode">
+                            <button class="control-btn" :title="t('qie-huan-bo-fang-mo-shi')" @click="togglePlaybackMode">
+                                <i v-if="currentPlaybackModeIndex != '2'" :class="currentPlaybackMode.icon" :title="currentPlaybackMode.title"></i>
+                                <span v-else class="loop-icon" :title="currentPlaybackMode.title">
+                                    <i class="fas fa-repeat"></i>
+                                    <sup>1</sup>
+                                </span>
+                            </button>
+                            <div class="player-menu playback-mode-menu">
+                                <button
+                                    v-for="(mode, index) in playbackModes"
+                                    :key="mode.title"
+                                    type="button"
+                                    class="player-menu-item playback-mode-option"
+                                    :class="{ active: currentPlaybackModeIndex === index }"
+                                    :title="mode.title"
+                                    @click.stop="setPlaybackMode(index)"
+                                >
+                                    <i v-if="index !== 2" :class="mode.icon"></i>
+                                    <span v-else class="loop-icon">
+                                        <i class="fas fa-repeat"></i>
+                                        <sup>1</sup>
+                                    </span>
+                                    <span>{{ mode.title }}</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="lyrics-container" @wheel="handleLyricsWheel">
-                    <div v-if="lyricsData.length > 0" id="lyrics"
-                        :style="{ fontSize: lyricsFontSize, transform: `translateY(${scrollAmount ? scrollAmount + 'px' : '50%'})` }">
-                        <div class="line-group" v-for="(lineData, lineIndex) in lyricsData" :key="lineIndex">
-                            <div class="line" @click="handleLyricsClick(lineIndex)" :class="{ click: lyricsFlag, [lyricsAlign]: true }">
-                                <span v-for="(charData, charIndex) in lineData.characters" :key="charIndex" class="char"
-                                    :class="{ highlight: charData.highlighted }">
-                                    {{ charData.char }}
-                                </span>
-                            </div>
-                            <div class="line translated" :class="{ [lyricsAlign]: true }" v-show="lineData.translated && lyricsMode === 'translation'">{{ lineData.translated }}</div>
-                            <div class="line romanized" :class="{ [lyricsAlign]: true }" v-show="lineData.romanized && lyricsMode === 'romanization'">{{ lineData.romanized }}</div>
+                    <template v-if="lyricsData.length > 0">
+                        <div v-if="lyricsDisplayMode === 'single'" id="lyrics" class="single-lyrics" :class="{ 'line-highlight-mode': lyricsHighlightMode === 'line' }"
+                            :style="{ fontSize: lyricsFontSize }">
+                            <transition name="single-lyric-fade">
+                                <div class="line-group" v-if="currentSingleLyricsLine" :key="singleLyricsLineIndex">
+                                    <div class="line" @click="handleLyricsClick(singleLyricsLineIndex)" :class="{ click: lyricsFlag, 'line-highlight': isCurrentLyricsLine(singleLyricsLineIndex), [lyricsAlign]: true }">
+                                        <span v-for="(charData, charIndex) in currentSingleLyricsLine.characters" :key="charIndex" class="char"
+                                            :class="{ highlight: lyricsHighlightMode === 'char' && charData.highlighted }">
+                                            {{ charData.char }}
+                                        </span>
+                                    </div>
+                                    <div class="line translated" :class="{ 'line-highlight': isCurrentLyricsLine(singleLyricsLineIndex), [lyricsAlign]: true }" v-show="currentSingleLyricsLine.translated && lyricsMode === 'translation'">{{ currentSingleLyricsLine.translated }}</div>
+                                    <div class="line romanized" :class="{ 'line-highlight': isCurrentLyricsLine(singleLyricsLineIndex), [lyricsAlign]: true }" v-show="currentSingleLyricsLine.romanized && lyricsMode === 'romanization'">{{ currentSingleLyricsLine.romanized }}</div>
+                                </div>
+                            </transition>
                         </div>
-                    </div>
+                        <div v-else id="lyrics" :class="{ 'line-highlight-mode': lyricsHighlightMode === 'line' }"
+                            :style="{ fontSize: lyricsFontSize, transform: `translateY(${scrollAmount ? scrollAmount + 'px' : '50%'})` }">
+                            <div class="line-group" v-for="(lineData, lineIndex) in lyricsData" :key="lineIndex">
+                                <div class="line" @click="handleLyricsClick(lineIndex)" :class="{ click: lyricsFlag, 'line-highlight': isCurrentLyricsLine(lineIndex), [lyricsAlign]: true }">
+                                    <span v-for="(charData, charIndex) in lineData.characters" :key="charIndex" class="char"
+                                        :class="{ highlight: lyricsHighlightMode === 'char' && charData.highlighted }">
+                                        {{ charData.char }}
+                                    </span>
+                                </div>
+                                <div class="line translated" :class="{ 'line-highlight': isCurrentLyricsLine(lineIndex), [lyricsAlign]: true }" v-show="lineData.translated && lyricsMode === 'translation'">{{ lineData.translated }}</div>
+                                <div class="line romanized" :class="{ 'line-highlight': isCurrentLyricsLine(lineIndex), [lyricsAlign]: true }" v-show="lineData.romanized && lyricsMode === 'romanization'">{{ lineData.romanized }}</div>
+                            </div>
+                        </div>
+                    </template>
                     <div v-else class="no-lyrics">{{ SongTips }}</div>
                 </div>
             </div>
@@ -204,8 +275,10 @@ import { useMusicQueueStore } from '../stores/musicQueue';
 import { useI18n } from 'vue-i18n';
 import PlaylistSelectModal from './PlaylistSelectModal.vue';
 import QueueList from './QueueList.vue';
+import FullscreenLyricsSettings from './FullscreenLyricsSettings.vue';
 import { useRouter } from 'vue-router';
 import { getCover, getAudioOutputDeviceSignature, share } from '../utils/utils';
+import { get } from '../utils/request';
 
 // 从统一入口导入所有模块
 import {
@@ -227,9 +300,33 @@ const router = useRouter();
 const musicQueueStore = useMusicQueueStore();
 const playlists = ref([]);
 const currentTime = ref(0);
-const lyricsFontSize = ref('24px');
-const lyricsAlign = ref('center');
-const lyricsBackground = ref('on');
+const fullscreenLyricsDefaultSettings = {
+    background: 'on',
+    fontSize: '24px',
+    align: 'center',
+    highlightMode: 'char',
+    displayMode: 'scroll'
+};
+const fullscreenLyricsSettings = ref({ ...fullscreenLyricsDefaultSettings });
+const lyricsFontSize = computed(() => fullscreenLyricsSettings.value.fontSize);
+const lyricsAlign = computed(() => fullscreenLyricsSettings.value.align);
+const lyricsBackground = computed(() => fullscreenLyricsSettings.value.background);
+const lyricsHighlightMode = computed(() => fullscreenLyricsSettings.value.highlightMode || 'char');
+const lyricsDisplayMode = computed(() => fullscreenLyricsSettings.value.displayMode || 'scroll');
+const lyricsDefaultBackgroundImage = computed(() => currentSong.value?.img || 'https://random.MoeJue.cn/randbg');
+const lyricsCoverImages = ref([]);
+const lyricsBackgroundImageIndex = ref(0);
+const lyricsBackgroundImages = computed(() => {
+    if (lyricsBackground.value !== 'cover') return [];
+    return lyricsCoverImages.value.length ? lyricsCoverImages.value : [lyricsDefaultBackgroundImage.value];
+});
+const lyricsBackgroundStyle = computed(() => {
+    if (lyricsBackground.value === 'off' || lyricsBackground.value === 'cover') {
+        return { background: 'var(--secondary-color)' };
+    }
+
+    return { backgroundImage: `url(${lyricsDefaultBackgroundImage.value})` };
+});
 const sliderElement = ref(null);
 const coverMode = ref(localStorage.getItem('lyrics-cover-mode') || 'square');
 
@@ -311,7 +408,15 @@ const switchQuality = async (option) => {
 
 // 初始化事件回调
 const onSongEnd = () => {
-    if (currentPlaybackModeIndex.value == 2) return;
+    if (currentPlaybackModeIndex.value == 2) return; // 单曲循环
+    // 顺序播放：最后一首播放完毕后停止
+    if (currentPlaybackModeIndex.value == 3) {
+        const currentIndex = musicQueueStore.queue.findIndex(song => song.hash === currentSong.value.hash);
+        if (currentIndex === musicQueueStore.queue.length - 1) {
+            playing.value = false;
+            return;
+        }
+    }
     playSongFromQueue('next');
 };
 
@@ -338,8 +443,6 @@ const updateCurrentTime = throttle(() => {
     const desktopLyricsEnabled = savedConfig?.desktopLyrics === 'on';
 
     if (audio) {
-        if (savedConfig?.lyricsAlign != lyricsAlign.value) lyricsAlign.value = savedConfig.lyricsAlign;
-
         if (hasLyricsData) {
             highlightCurrentChar(audio.currentTime, !lyricsFlag.value);
         }
@@ -410,6 +513,32 @@ const { playing, isMuted, volume, changeVolume, audio, playbackRate, setPlayback
 const lyricsHandler = useLyricsHandler(t);
 const { lyricsData, originalLyrics, showLyrics, scrollAmount, SongTips, lyricsMode, toggleLyrics, getLyrics, highlightCurrentChar, resetLyricsHighlight, getCurrentLineText, scrollToCurrentLine, toggleLyricsMode } = lyricsHandler;
 
+const currentLyricsLineIndex = computed(() => {
+    if (!lyricsData.value || lyricsData.value.length === 0) return -1;
+
+    const currentTimeMs = currentTime.value * 1000;
+    for (let index = 0; index < lyricsData.value.length; index++) {
+        const firstChar = lyricsData.value[index]?.characters?.[0];
+        const nextFirstChar = lyricsData.value[index + 1]?.characters?.[0];
+
+        if (firstChar && currentTimeMs >= firstChar.startTime && (!nextFirstChar || currentTimeMs < nextFirstChar.startTime)) {
+            return index;
+        }
+    }
+
+    return -1;
+});
+
+const singleLyricsLineIndex = computed(() => {
+    if (!lyricsData.value || lyricsData.value.length === 0) return -1;
+    return currentLyricsLineIndex.value >= 0 ? currentLyricsLineIndex.value : 0;
+});
+const currentSingleLyricsLine = computed(() => {
+    if (singleLyricsLineIndex.value < 0) return null;
+    return lyricsData.value[singleLyricsLineIndex.value] || null;
+});
+const isCurrentLyricsLine = (lineIndex) => lyricsHighlightMode.value === 'line' && currentLyricsLineIndex.value === lineIndex;
+
 // 获取当前播放时间的歌词行索引
 const getCurrentLineIndex = (currentTime) => {
     if (!lyricsData.value || lyricsData.value.length === 0) return -1;
@@ -429,12 +558,118 @@ const progressBar = useProgressBar(audio, resetLyricsHighlight);
 const { progressWidth, isProgressDragging, showTimeTooltip, tooltipPosition, tooltipTime, climaxPoints, formatTime, getMusicHighlights, onProgressDragStart, updateProgressFromEvent, updateTimeTooltip, hideTimeTooltip } = progressBar;
 
 const playbackMode = usePlaybackMode(t, audio);
-const { currentPlaybackModeIndex, currentPlaybackMode, playedSongsStack, currentStackIndex, togglePlaybackMode } = playbackMode;
+const { playbackModes, currentPlaybackModeIndex, currentPlaybackMode, playedSongsStack, currentStackIndex, togglePlaybackMode, setPlaybackMode } = playbackMode;
 
 const mediaSession = useMediaSession();
 
 const songQueue = useSongQueue(t, musicQueueStore, queueList);
-const { currentSong, NextSong, addSongToQueue, addCloudMusicToQueue, addLocalMusicToQueue, addLocalPlaylistToQueue, addToNext, getPlaylistAllSongs, addPlaylistToQueue, addCloudPlaylistToQueue } = songQueue;
+const { currentSong, NextSong, addSongToQueue, addCloudMusicToQueue, addLocalMusicToQueue, addLocalPlaylistToQueue, addToNext, getPlaylistAllSongs, addPlaylistToQueue, addCloudPlaylistToQueue, restoreLocalSongCover } = songQueue;
+
+let lyricsBackgroundCarouselTimer = null;
+let lyricsCoverImagesRequestId = 0;
+
+const normalizeLyricsCoverImageUrl = (url) => {
+    if (typeof url !== 'string' || !/^https?:\/\//.test(url)) return '';
+    return url.replace(/\{size\}/g, '1080');
+};
+
+const collectLyricsCoverImageUrls = (imgs) => {
+    const urls = [];
+    const visit = (value) => {
+        if (!value) return;
+
+        if (Array.isArray(value)) {
+            value.forEach(visit);
+            return;
+        }
+
+        if (typeof value === 'object') {
+            const url = normalizeLyricsCoverImageUrl(
+                value.sizable_portrait ||
+                value.sizable_cover ||
+                value.url ||
+                value.img ||
+                value.cover ||
+                value.portrait
+            );
+            if (url) {
+                urls.push(url);
+                return;
+            }
+
+            Object.values(value).forEach(visit);
+        }
+    };
+
+    visit(imgs);
+    return urls;
+};
+
+const extractLyricsCoverImages = (response) => {
+    const images = [];
+    const groups = Array.isArray(response?.data) ? response.data : [];
+
+    groups.forEach((group) => {
+        const authors = Array.isArray(group?.author) ? group.author : [];
+        const albums = Array.isArray(group?.album) ? group.album : [];
+
+        authors.forEach((author) => {
+            images.push(...collectLyricsCoverImageUrls(author?.imgs));
+        });
+        albums.forEach((album) => {
+            images.push(...collectLyricsCoverImageUrls(album?.imgs));
+        });
+    });
+
+    return [...new Set(images)];
+};
+
+const stopLyricsBackgroundCarousel = () => {
+    if (lyricsBackgroundCarouselTimer) {
+        clearInterval(lyricsBackgroundCarouselTimer);
+        lyricsBackgroundCarouselTimer = null;
+    }
+};
+
+const startLyricsBackgroundCarousel = () => {
+    stopLyricsBackgroundCarousel();
+    lyricsBackgroundImageIndex.value = 0;
+
+    if (lyricsBackground.value !== 'cover' || !showLyrics.value || lyricsBackgroundImages.value.length <= 1) return;
+
+    lyricsBackgroundCarouselTimer = setInterval(() => {
+        const total = lyricsBackgroundImages.value.length;
+        if (total <= 1) {
+            stopLyricsBackgroundCarousel();
+            return;
+        }
+        lyricsBackgroundImageIndex.value = (lyricsBackgroundImageIndex.value + 1) % total;
+    }, 4000);
+};
+
+const loadLyricsCoverImages = async () => {
+    const hash = currentSong.value?.hash;
+    lyricsCoverImages.value = [];
+    lyricsBackgroundImageIndex.value = 0;
+
+    if (lyricsBackground.value !== 'cover' || !showLyrics.value || !hash || String(hash).startsWith('local_')) {
+        startLyricsBackgroundCarousel();
+        return;
+    }
+
+    const requestId = ++lyricsCoverImagesRequestId;
+    try {
+        const response = await get(`/images?hash=${encodeURIComponent(hash)}`);
+        if (requestId !== lyricsCoverImagesRequestId || currentSong.value?.hash !== hash || lyricsBackground.value !== 'cover') return;
+
+        lyricsCoverImages.value = extractLyricsCoverImages(response);
+    } catch (error) {
+        console.warn('[PlayerControl] 获取歌词背景封面失败:', error);
+        lyricsCoverImages.value = [];
+    } finally {
+        if (requestId === lyricsCoverImagesRequestId) startLyricsBackgroundCarousel();
+    }
+};
 
 // 添加自动切换定时器引用
 let autoSwitchTimer = null;
@@ -491,6 +726,10 @@ let lastLyricsRetryAt = 0;
 const getCurrentLyrics = async () => {
     const hash = currentSong.value.hash;
     if (!hash) return false;
+    if (String(hash).startsWith('local_')) {
+        SongTips.value = t('zan-wu-ge-ci');
+        return false;
+    }
 
     if (pendingLyricsHash === hash && pendingLyricsPromise) {
         return pendingLyricsPromise;
@@ -527,6 +766,19 @@ const formattedDuration = computed(() => formatTime(currentSong.value?.timeLengt
 
 watch(() => currentSong.value.hash, () => {
     qualityMenuOpen.value = false;
+    loadLyricsCoverImages();
+});
+
+watch(() => [lyricsBackground.value, showLyrics.value], () => {
+    if (lyricsBackground.value === 'cover' && showLyrics.value) {
+        loadLyricsCoverImages();
+        return;
+    }
+
+    lyricsCoverImagesRequestId++;
+    lyricsCoverImages.value = [];
+    lyricsBackgroundImageIndex.value = 0;
+    stopLyricsBackgroundCarousel();
 });
 
 // 判断是否有多种歌词模式（同时有翻译和音译）
@@ -537,6 +789,19 @@ const hasMultiLyricsMode = computed(() => {
     return lyricsData.value.some(line => line.translated && line.romanized);
 });
 
+const handleFullscreenLyricsSettingsChange = () => {
+    currentTime.value = audio.currentTime || 0;
+    resetLyricsHighlight(currentTime.value);
+    if (lyricsDisplayMode.value !== 'scroll') return;
+
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+            const currentLineIndex = getCurrentLineIndex(audio.currentTime);
+            if (currentLineIndex >= 0) scrollToCurrentLine(currentLineIndex);
+        });
+    }
+};
+
 // 切换歌词显示模式（翻译/音译）
 const switchLyricsMode = () => {
     toggleLyricsMode();
@@ -546,6 +811,16 @@ const switchLyricsMode = () => {
 const toggleCoverMode = () => {
     coverMode.value = coverMode.value === 'square' ? 'vinyl' : 'square';
     localStorage.setItem('lyrics-cover-mode', coverMode.value);
+};
+
+const isBlobUrl = (url) => typeof url === 'string' && url.startsWith('blob:');
+
+const isLocalSong = (song) => !!song?.isLocal || String(song?.hash || '').startsWith('local_');
+
+const toPlayerSong = (song) => {
+    if (!isLocalSong(song)) return song;
+    const { file, handle, ...playerSong } = song;
+    return playerSong;
 };
 
 // 播放歌曲
@@ -563,7 +838,7 @@ const playSong = async (song) => {
             return;
         }
 
-        currentSong.value = structuredClone(song);
+        currentSong.value = structuredClone(toPlayerSong(song));
 
         // 应用响度规格化（如果已启用 Web Audio）
         if (song.loudnessNormalization) {
@@ -626,7 +901,14 @@ const playSong = async (song) => {
         originalLyrics.value = '';
         isLyrics = undefined;
         lastLyricsRetryAt = 0;
-        if(song?.isLocal) return;
+        if(isLocalSong(song)) {
+            const { file, handle, ...savedLocalSong } = currentSong.value;
+            localStorage.setItem('current_song', JSON.stringify({
+                ...savedLocalSong,
+                url: ''
+            }));
+            return;
+        }
         // 保存当前歌曲到本地存储
         localStorage.setItem('current_song', JSON.stringify(currentSong.value));
 
@@ -649,7 +931,7 @@ const togglePlayPause = async () => {
         return;
     } else if (!audio.src) {
         console.log('[PlayerControl] 音频源为空，尝试重新设置');
-        if (currentSong.value.url) {
+        if (currentSong.value.url && !isLocalSong(currentSong.value)) {
             console.log('[PlayerControl] 从当前歌曲获取URL:', currentSong.value.url);
             audio.src = currentSong.value.url;
         } else {
@@ -657,7 +939,17 @@ const togglePlayPause = async () => {
             const songIndex = musicQueueStore.queue.findIndex(song => song.hash === currentSong.value.hash);
             if (songIndex !== -1) {
                 const song = musicQueueStore.queue[songIndex];
-                if (song.url) {
+                if (isLocalSong(song)) {
+                    console.log('[PlayerControl] 本地音乐重新获取播放地址');
+                    const result = await addLocalMusicToQueue({
+                        ...song,
+                        isLocal: true
+                    });
+                    if (result && result.song) {
+                        await playSong(result.song);
+                    }
+                    return;
+                } else if (song.url) {
                     console.log('[PlayerControl] 从队列中的歌曲获取URL:', song.url);
                     currentSong.value.url = song.url;
                     audio.src = song.url;
@@ -665,9 +957,6 @@ const togglePlayPause = async () => {
                     console.log('[PlayerControl] 云音乐没有URL，重新获取');
                     addCloudMusicToQueue(song.hash, song.name, song.author, song.timeLength, song.img);
                     return;
-                }else if(song.isLocal){
-                    console.log('[PlayerControl] 本地音乐没有URL，重新获取');
-                    addLocalMusicToQueue(song);
                 } else {
                     console.log('[PlayerControl] 歌曲没有URL，重新获取');
                     const result = await addSongToQueue(song.hash, song.name, song.img, song.author);
@@ -690,6 +979,17 @@ const togglePlayPause = async () => {
         playing.value = false;
     } else {
         console.log('[PlayerControl] 开始播放');
+
+        try {
+            mediaSession.changeMediaSession(currentSong.value);
+            // 更新SMTC位置状态
+            if (audio.duration) {
+                mediaSession.updatePositionState(audio.currentTime, audio.duration, currentSpeed.value);
+            }
+        } catch(smtcErr) {
+            console.warn('[PlayerControl] 更新 SMTC 信息失败:', smtcErr);
+        }
+
         try {
             await audio.play();
             playing.value = true;
@@ -747,8 +1047,19 @@ const playSongFromQueue = async (direction) => {
     } else if (currentPlaybackModeIndex.value === 0) {
         // 随机播放
         targetIndex = handleRandomPlayback(direction, currentIndex);
+    } else if (currentPlaybackModeIndex.value === 3) {
+        // 顺序播放
+        if (direction === 'previous') {
+            targetIndex = currentIndex === 0 ? musicQueueStore.queue.length - 1 : currentIndex - 1;
+        } else {
+            targetIndex = currentIndex + 1;
+            if (targetIndex >= musicQueueStore.queue.length) {
+                playing.value = false;
+                return;
+            }
+        }
     } else {
-        // 顺序播放或单曲循环
+        // 列表循环或单曲循环
         targetIndex = direction === 'previous'
             ? (currentIndex === 0 ? musicQueueStore.queue.length - 1 : currentIndex - 1)
             : (currentIndex + 1) % musicQueueStore.queue.length;
@@ -771,8 +1082,11 @@ const playSongFromQueue = async (direction) => {
                 targetSong.img,
                 false // 不重置播放位置，只获取URL
             );
-        } else if (targetSong.isLocal) {
-            result = await addLocalMusicToQueue(targetSong, false);
+        } else if (isLocalSong(targetSong)) {
+            result = await addLocalMusicToQueue({
+                ...targetSong,
+                isLocal: true
+            }, false);
         } else {
             result = await addSongToQueue(
                 targetSong.hash,
@@ -1167,6 +1481,18 @@ const changePlaybackSpeed = (speed) => {
     }
 };
 
+const handleDocumentClick = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    
+    if (!target.closest('.quality-menu-wrapper')) {
+        qualityMenuOpen.value = false;
+    }
+    if (!target.closest('.playback-speed')) {
+        showSpeedMenu.value = false;
+    }
+};
+
 // 跳转到搜索页面搜索歌曲
 const searchSong = (songName) => {
     // 关闭全屏歌词
@@ -1216,13 +1542,33 @@ onMounted(() => {
     if (current_song) {
         try {
             const savedSong = JSON.parse(current_song);
+            if (isLocalSong(savedSong)) {
+                savedSong.isLocal = true;
+                savedSong.url = '';
+                if (isBlobUrl(savedSong.img)) {
+                    savedSong.img = './assets/images/ico.png';
+                }
+            }
             currentSong.value = savedSong;
+
+            if (isLocalSong(savedSong)) {
+                void restoreLocalSongCover(savedSong).then((cover) => {
+                    if (!cover || currentSong.value.hash !== savedSong.hash) return;
+                    currentSong.value.img = cover;
+                    const { file, handle, ...savedLocalSong } = currentSong.value;
+                    localStorage.setItem('current_song', JSON.stringify({
+                        ...savedLocalSong,
+                        url: ''
+                    }));
+                });
+            }
 
             // 如果有URL，恢复播放源
             if (savedSong.url) {
-                if(savedSong.isLocal) return;
-                console.log('[PlayerControl] 从缓存恢复音频源:', savedSong.url);
-                audio.src = savedSong.url;
+                if (!isLocalSong(savedSong)) {
+                    console.log('[PlayerControl] 从缓存恢复音频源:', savedSong.url);
+                    audio.src = savedSong.url;
+                }
             } else {
                 console.log('[PlayerControl] 缓存的歌曲没有URL');
             }
@@ -1233,13 +1579,6 @@ onMounted(() => {
 
     // 初始化播放模式
     playbackMode.initPlaybackMode();
-
-    // 初始化设置
-    const settings = JSON.parse(localStorage.getItem('settings') || '{}');
-    if (settings) {
-        lyricsBackground.value = settings?.lyricsBackground || 'on';
-        lyricsFontSize.value = settings?.lyricsFontSize || '24px';
-    }
 
     // 设置媒体会话
     mediaSession.initMediaSession({
@@ -1290,6 +1629,7 @@ onMounted(() => {
 
     // 添加事件监听
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('click', handleDocumentClick);
 
     // 设置特定于PlayerControl的监听器
     audio.addEventListener('pause', () => {
@@ -1337,6 +1677,7 @@ watch(lyricsData, (newLyrics) => {
 onUnmounted(() => {
     // 清除自动切换定时器
     clearAutoSwitchTimer();
+    stopLyricsBackgroundCarousel();
 
     if (audioOutputDeviceWatchChangeHandler) {
         window.removeEventListener('audio-output-device-watch-change', audioOutputDeviceWatchChangeHandler);
@@ -1375,6 +1716,7 @@ onUnmounted(() => {
 
     // 清理键盘事件
     document.removeEventListener('keydown', handleKeyDown);
+    document.removeEventListener('click', handleDocumentClick);
 });
 
 // 对外暴露接口
