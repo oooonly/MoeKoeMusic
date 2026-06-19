@@ -219,7 +219,7 @@ export default function useOnlineMusicQueue(t, musicQueueStore, currentSong, tim
                 img: img,
                 author: author,
                 timeLength: response.timeLength,
-                url: `${import.meta.env.VITE_APP_API_URL}song/raw?targetUrl=${response.url[1]}`,
+                url: `${import.meta.env.VITE_APP_API_URL}/song/raw?targetUrl=${response.url[1]}`,
                 // 响度规格化参数
                 loudnessNormalization: {
                     volume: response.volume || 0,
