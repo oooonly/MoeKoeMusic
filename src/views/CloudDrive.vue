@@ -1,42 +1,53 @@
 <template>
     <div class="detail-page">
         <!-- 头部信息区域 -->
-        <div class="header">
-            <img class="cover-art" :src="`./assets/images/cloud.png`" />
-            <div class="info">
-                <h1 class="title">{{ $t('wo-de-yun-pan') }}</h1>
-                <p class="subtitle">{{ $t('yun-pan-ge-qu-shu') }}: {{ tracks.length }}</p>
-                <div class="storage-info" v-if="storageInfo.totalSize > 0">
-                    <div class="storage-progress">
-                        <div class="storage-progress-bar"
-                            :style="{ width: (storageInfo.usedSize / storageInfo.totalSize * 100) + '%' }"></div>
+        <div class="header detail-sliver-header" :style="headerStyle">
+            <CommonSkeleton v-if="loading" variant="detail-header" />
+            <template v-else>
+                <img class="cover-art" :style="coverStyle" :src="`./assets/images/cloud.png`" />
+            <div class="info" :style="infoStyle">
+                <h1 class="title" :style="titleStyle">{{ $t('wo-de-yun-pan') }}</h1>
+                <div class="expanded-info" :style="detailsStyle">
+                    <p class="subtitle">{{ $t('yun-pan-ge-qu-shu') }}: {{ displayTrackCount }}</p>
+                    <div class="storage-info" v-if="storageInfo.totalSize > 0">
+                        <div class="storage-progress">
+                            <div class="storage-progress-bar" :style="storageUsageStyle"></div>
+                        </div>
+                        <div class="storage-text">
+                            {{ formatStorageSize(storageInfo.usedSize) }} / {{ formatStorageSize(storageInfo.totalSize) }}
+                            ({{ $t('ke-yong') }}: {{ formatStorageSize(storageInfo.availableSize) }})
+                        </div>
                     </div>
-                    <div class="storage-text">
-                        {{ formatStorageSize(storageInfo.usedSize) }} / {{ formatStorageSize(storageInfo.totalSize) }}
-                        ({{ $t('ke-yong') }}: {{ formatStorageSize(storageInfo.availableSize) }})
+                    <div class="description">{{ $t('yun-pan-miao-shu') }}</div>
+                    <div class="actions">
+                        <button class="primary-btn" @click="addPlaylistToQueue($event)">
+                            <i class="fas fa-play"></i> {{ $t('bo-fang') }}
+                        </button>
+                        <button class="upload-btn" :class="{ 'uploading': isUploading }" @click="uploadMusic">
+                            <i class="fas" :class="isUploading ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
+                            {{ isUploading ? `上传中 ${uploadProgress.current}/${uploadProgress.total} (${uploadProgress.percent}%)` : $t('shang-chuan-yin-le') }}
+                        </button>
+                        <input ref="uploadInputRef" type="file" multiple
+                            accept=".mp3,.flac,.wav,.m4a,.aac,.ogg,.ape,.wma" style="display: none"
+                            @change="handleFileSelect" />
                     </div>
-                </div>
-                <div class="description">{{ $t('yun-pan-miao-shu') }}</div>
-                <div class="actions">
-                    <button class="primary-btn" @click="addPlaylistToQueue($event)">
-                        <i class="fas fa-play"></i> {{ $t('bo-fang') }}
-                    </button>
-                    <button class="upload-btn" @click="uploadMusic">
-                        <i class="fas fa-upload"></i> {{ $t('shang-chuan-yin-le') }}
-                    </button>
                 </div>
             </div>
+            <button class="collapsed-play-btn" :style="collapsedActionsStyle" @click="addPlaylistToQueue($event)"
+                :title="$t('bo-fang')">
+                <i class="far fa-play-circle"></i>
+            </button>
+            </template>
         </div>
+        <div class="detail-sliver-spacer" :style="spacerStyle"></div>
 
         <!-- 导航按钮 -->
-        <i class="location-arrow fas fa-location-arrow" @click="scrollToItem" :title="t('dang-qian-bo-fang-ge-qu')"></i>
-        <img :src="`./assets/images/lemon.gif`" class="scroll-bottom-img" @click="scrollToFirstItem"
-            :title="t('fan-hui-ding-bu')" />
+        <i class="location-arrow fas fa-crosshairs" @click="scrollToItem" :title="t('dang-qian-bo-fang-ge-qu')"></i>
 
         <!-- 歌曲列表 -->
         <div class="track-list-container">
-            <div class="track-list-header">
-                <h2 class="track-list-title"><span>{{ $t('yun-pan-ge-qu') }}</span> ( {{ tracks.length }} )</h2>
+            <div class="track-list-header" :style="listHeaderStyle">
+                <h2 class="track-list-title" :style="listTitleStyle"><span>{{ $t('yun-pan-ge-qu') }}</span> ( {{ displayTrackCount }} )</h2>
                 <div class="track-list-actions">
                     <div class="batch-action-container">
                         <button class="batch-action-btn" @click="toggleBatchSelection"
@@ -64,7 +75,7 @@
             </div>
 
             <!-- 表头 -->
-            <div class="track-list-header-row">
+            <div class="track-list-header-row" :style="trackHeaderStyle">
                 <div class="track-checkbox-header" v-if="batchSelectionMode">
                     <input type="checkbox" :checked="isAllSelected" @click="toggleSelectAll">
                 </div>
@@ -83,8 +94,16 @@
                 </div>
             </div>
 
-            <RecycleScroller ref="recycleScrollerRef" :items="filteredTracks" :item-size="listMode === 'list' ? 50 : 70"
-                class="track-list" key-field="hash">
+            <div v-if="isSearching" class="search-loading-overlay">
+                <div class="search-loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>{{ $t('zheng-zai-jia-zai-quan-bu-ge-qu') }}</span>
+                </div>
+            </div>
+
+            <RecycleScroller v-else ref="recycleScrollerRef" :items="filteredTracks" :item-size="listMode === 'list' ? 50 : 70"
+                class="track-list" key-field="hash" page-mode :buffer="400" :emit-update="true"
+                @update="handleVirtualUpdate">
                 <template #default="{ item, index }">
                     <div class="li" :key="item.hash"
                         :class="{ 'cover-view': listMode === 'grid', 'selected': batchSelectionMode && selectedTracks.includes(index) }"
@@ -130,15 +149,21 @@
             </transition-group>
         </div>
     </div>
+    <PageScrollbar />
+    <BackToTop bottom="100px" right="12px" />
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
 import { RecycleScroller } from 'vue3-virtual-scroller';
-import { get } from '../utils/request';
+import PageScrollbar from '../components/PageScrollbar.vue';
+import BackToTop from '../components/BackToTop.vue';
+import CommonSkeleton from '../components/CommonSkeleton.vue';
+import { get, post } from '../utils/request';
 import { useRouter } from 'vue-router';
 import { MoeAuthStore } from '../stores/store';
 import { useI18n } from 'vue-i18n';
+import { useStickyDetailHeader } from '@/composables/useStickyDetailHeader';
 
 
 const { t } = useI18n();
@@ -149,11 +174,26 @@ const router = useRouter();
 const tracks = ref([]);
 const filteredTracks = ref([]);
 const searchQuery = ref('');
-const pageSize = ref(100);
+const pageSize = 60;
+const maxPageSize = 300;
+const currentPage = ref(1);
+const hasMore = ref(true);
+const isLoadingMore = ref(false);
+const totalCount = ref(0);
 const recycleScrollerRef = ref(null);
 const loading = ref(true);
+const isSearching = ref(false);
 const flyingNotes = ref([]);
 let noteId = 0;
+
+// 上传相关状态
+const uploadInputRef = ref(null);
+const isUploading = ref(false);
+const uploadProgress = ref({ current: 0, total: 0, percent: 0 });
+const MAX_UPLOAD_SIZE = 100 * 1024 * 1024; // 服务端请求体上限 100MB
+// 上传成功后绕过 api 的 2 分钟响应缓存
+let cacheBust = 0;
+const cacheBustParams = () => (cacheBust ? { timestamp: cacheBust } : {});
 
 // 云盘存储空间信息
 const storageInfo = ref({
@@ -180,9 +220,30 @@ const isAllSelected = computed(() => {
     return selectedTracks.value.length === filteredTracks.value.length && filteredTracks.value.length > 0;
 });
 
+const displayTrackCount = computed(() => {
+    return hasMore.value ? totalCount.value : tracks.value.length;
+});
+
 const props = defineProps({
     playerControl: Object
 });
+
+const {
+    headerStyle,
+    spacerStyle,
+    coverStyle,
+    infoStyle,
+    titleStyle,
+    detailsStyle,
+    listTitleStyle,
+    collapsedActionsStyle,
+    listHeaderStyle,
+    trackHeaderStyle
+} = useStickyDetailHeader();
+
+const storageUsageStyle = computed(() => ({
+    width: `${storageInfo.value.totalSize ? storageInfo.value.usedSize / storageInfo.value.totalSize * 100 : 0}%`
+}));
 
 onMounted(() => {
     loadData();
@@ -203,47 +264,23 @@ const loadData = async () => {
 
 // 获取云盘歌曲
 const fetchCloudTracks = async () => {
-    let allTracks = [];
-    let currentPage = 1;
+    currentPage.value = 1;
+    hasMore.value = true;
+    loading.value = true;
+    isSearching.value = false;
+    totalCount.value = 0;
+    tracks.value = [];
+    filteredTracks.value = [];
 
     try {
+        const curPage = currentPage.value;
         const firstPageResponse = await get('/user/cloud', {
-            page: currentPage,
-            pagesize: pageSize.value
+            page: curPage,
+            pagesize: pageSize,
+            ...cacheBustParams()
         });
 
-        if (firstPageResponse.status === 1) {
-            // 处理存储空间信息
-            if (firstPageResponse.data.type_size) {
-                const { max_size, used_size, availble_size } = firstPageResponse.data;
-                storageInfo.value = {
-                    totalSize: max_size || 0,
-                    usedSize: used_size || 0,
-                    availableSize: availble_size || 0
-                };
-            }
-
-            // 处理歌曲列表
-            const songList = firstPageResponse.data.list || firstPageResponse.data.info || [];
-            allTracks = formatTrackList(songList);
-            tracks.value = allTracks;
-            filteredTracks.value = allTracks;
-            currentPage++;
-
-            // 获取剩余页面数据
-            if (firstPageResponse.data.list_count > pageSize.value) {
-                const totalPages = Math.ceil(firstPageResponse.data.list_count / pageSize.value);
-                for (let i = 1; i < totalPages && currentPage <= totalPages; i++) {
-                    const nextPageData = await fetchCloudPage(currentPage);
-                    if (!nextPageData || nextPageData.length === 0) break;
-
-                    allTracks = allTracks.concat(nextPageData);
-                    tracks.value = allTracks;
-                    filteredTracks.value = allTracks;
-                    currentPage++;
-                }
-            }
-        }
+        applyCloudResponse(firstPageResponse, true, curPage, pageSize);
     } catch (error) {
         $message.error(t('ge-qu-shu-ju-cuo-wu'));
         console.error('获取云盘歌曲失败:', error);
@@ -257,17 +294,115 @@ const fetchCloudPage = async (page) => {
     try {
         const response = await get('/user/cloud', {
             page,
-            pagesize: pageSize.value
+            pagesize: pageSize,
+            ...cacheBustParams()
         });
 
-        if (response.status === 1) {
-            const songList = response.data.list || response.data.info || [];
-            return formatTrackList(songList);
-        }
+        return response;
     } catch (error) {
         console.error('获取更多云盘歌曲失败:', error);
     }
-    return [];
+    return null;
+};
+
+const applyCloudResponse = (response, replace, curPage, curPageSize) => {
+    if (!response || response.status !== 1) {
+        hasMore.value = false;
+        return;
+    }
+
+    if (response.data.type_size) {
+        const { max_size, used_size, availble_size } = response.data;
+        storageInfo.value = {
+            totalSize: max_size || 0,
+            usedSize: used_size || 0,
+            availableSize: availble_size || 0
+        };
+    }
+
+    const songList = response.data.list || response.data.info || [];
+    const formattedTracks = formatTrackList(songList);
+    totalCount.value = response.data.list_count ?? (replace ? formattedTracks.length : totalCount.value);
+    tracks.value = replace ? formattedTracks : [...tracks.value, ...formattedTracks];
+    filteredTracks.value = tracks.value;
+    currentPage.value = curPage + 1;
+    hasMore.value = songList.length >= curPageSize && tracks.value.length < totalCount.value;
+};
+
+const loadMoreTracks = async () => {
+    if (loading.value || isLoadingMore.value || !hasMore.value) return;
+
+    isLoadingMore.value = true;
+
+    try {
+        const curPage = currentPage.value;
+        const response = await fetchCloudPage(curPage);
+        applyCloudResponse(response, false, curPage, pageSize);
+    } finally {
+        isLoadingMore.value = false;
+    }
+};
+
+const handleVirtualUpdate = (startIndex, endIndex) => {
+    if (loading.value || searchQuery.value.trim()) return;
+    if (Math.max(startIndex, endIndex) >= filteredTracks.value.length - 1) {
+        loadMoreTracks();
+    }
+};
+
+const loadAllRemainingTracks = async (onAppend) => {
+    while (isLoadingMore.value) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    if (!hasMore.value) return;
+
+    isLoadingMore.value = true;
+    try {
+        const loadedHashes = new Set(tracks.value.map(track => track.hash));
+        let page = Math.floor(tracks.value.length / maxPageSize) + 1;
+
+        while (hasMore.value) {
+            const response = await get('/user/cloud', {
+                page,
+                pagesize: maxPageSize,
+                ...cacheBustParams()
+            });
+
+            if (!response || response.status !== 1) break;
+
+            if (response.data.type_size) {
+                const { max_size, used_size, availble_size } = response.data;
+                storageInfo.value = {
+                    totalSize: max_size || 0,
+                    usedSize: used_size || 0,
+                    availableSize: availble_size || 0
+                };
+            }
+
+            const songList = response.data.list || response.data.info || [];
+            if (songList.length === 0) {
+                hasMore.value = false;
+                return;
+            }
+
+            totalCount.value = response.data.list_count ?? totalCount.value;
+            const newTracks = formatTrackList(songList).filter(track => !loadedHashes.has(track.hash));
+            if (newTracks.length > 0) {
+                tracks.value = [...tracks.value, ...newTracks];
+                filteredTracks.value = tracks.value;
+                newTracks.forEach(track => loadedHashes.add(track.hash));
+                onAppend?.(newTracks);
+            }
+
+            hasMore.value = songList.length >= maxPageSize && tracks.value.length < totalCount.value;
+            page++;
+        }
+
+        currentPage.value = Math.floor(tracks.value.length / pageSize) + 1;
+    } finally {
+        isLoadingMore.value = false;
+    }
 };
 
 // 获取音质信息
@@ -296,6 +431,7 @@ const formatTrackList = (songList) => {
             album: track.album_name || '云盘音乐',
             timelen: track.timelen || 0,
             qualityInfo: qualityInfo,
+            fileid: track?.fileid || track?.kv_id || 0,
             filesize: formatStorageSize(track.size) || 0,
             bitrate: track.bitrate || 0,
             cover: track?.album_info?.sizable_cover?.replace("{size}", 480) || track?.authors?.[0]?.sizable_avatar?.replace("{size}", 480)
@@ -319,7 +455,16 @@ const formatStorageSize = (bytes) => {
 };
 
 // 搜索歌曲
-const searchTracks = () => {
+const searchTracks = async () => {
+    if (hasMore.value) {
+        isSearching.value = true;
+        try {
+            await loadAllRemainingTracks();
+        } finally {
+            isSearching.value = false;
+        }
+    }
+
     filteredTracks.value = tracks.value.filter(track =>
         track.name.toLowerCase().trim().includes(searchQuery.value.toLowerCase().trim()) ||
         track.author.toLowerCase().trim().includes(searchQuery.value.toLowerCase().trim())
@@ -333,6 +478,12 @@ const playSong = async (hash, name, author, timeLength, cover) => {
 };
 
 // 添加整个播放列表到队列
+const loadAndAppendRemainingTracks = async () => {
+    await loadAllRemainingTracks((newTracks) => {
+        props.playerControl.addCloudPlaylistToQueue(newTracks, true);
+    });
+};
+
 const addPlaylistToQueue = async (event, append = false) => {
     const playButton = event.currentTarget;
     const rect = playButton.getBoundingClientRect();
@@ -350,28 +501,146 @@ const addPlaylistToQueue = async (event, append = false) => {
         flyingNotes.value = flyingNotes.value.filter(n => n.id !== note.id);
     }, 1500);
     props.playerControl.addCloudPlaylistToQueue(filteredTracks.value, append);
-};
-
-const uploadMusic = () => {
-    $message.info('上传功能正在开发中...');
-};
-
-// 滚动到当前播放歌曲
-const scrollToItem = () => {
-    const currentIndex = filteredTracks.value.findIndex(song => song.hash === props.playerControl.currentSong.hash);
-    if (currentIndex !== -1) {
-        recycleScrollerRef.value.scrollToItem(currentIndex - 3, { behavior: 'smooth' });
+    if (hasMore.value) {
+        loadAndAppendRemainingTracks();
     }
 };
 
-// 滚动到顶部
-const scrollToFirstItem = () => {
-    recycleScrollerRef.value.scrollToItem(0, { behavior: 'smooth' });
-    window.scrollTo({
-        top: 0,
-        behavior: 'smooth',
-        scrollSource: 'manual-button-click'
+const uploadMusic = () => {
+    if (isUploading.value) return;
+    uploadInputRef.value?.click();
+};
+
+// 读取音频时长（毫秒），失败返回 0
+const getAudioDuration = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    const done = (ms) => {
+        URL.revokeObjectURL(url);
+        resolve(ms);
+    };
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : 0);
+    audio.onerror = () => done(0);
+    audio.src = url;
+});
+
+// 估算音质等级（3=HQ 4=SQ，与云盘列表 bitrate 字段一致），无法判断时返回 0
+const getUploadQuality = (file, extendname, timelen) => {
+    if (['flac', 'ape', 'wav'].includes(extendname)) return 4;
+    if (!timelen) return 0;
+    const kbps = (file.size * 8) / (timelen / 1000) / 1000;
+    return kbps >= 300 ? 3 : 0;
+};
+
+// 上传单个文件到云盘，元数据通过 query 传递，文件二进制作为请求体
+const uploadFile = async (file) => {
+    const dotIndex = file.name.lastIndexOf('.');
+    const extendname = dotIndex > -1 ? file.name.slice(dotIndex + 1).toLowerCase() : 'mp3';
+    const baseName = dotIndex > -1 ? file.name.slice(0, dotIndex) : file.name;
+    const separatorIndex = baseName.indexOf(' - ');
+    const authorName = separatorIndex > -1 ? baseName.slice(0, separatorIndex).trim() : '';
+    const timelen = await getAudioDuration(file);
+    const quality = getUploadQuality(file, extendname, timelen);
+
+    return post('/user/cloud/upload', file, {
+        params: {
+            name: file.name,
+            author_name: authorName,
+            extendname,
+            timelen,
+            // 音质不确定时不传，由服务端使用默认值
+            ...(quality ? { bitrate: quality } : {})
+        },
+        headers: { 'Content-Type': 'application/octet-stream' },
+        timeout: 0,
+        onUploadProgress: (e) => {
+            // 上传到本地 API 后服务端还需分片转传酷狗，进度封顶 99% 等待响应
+            if (e.total) uploadProgress.value.percent = Math.min(99, Math.round((e.loaded / e.total) * 100));
+        }
     });
+};
+
+const handleFileSelect = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length || isUploading.value) return;
+
+    isUploading.value = true;
+    uploadProgress.value = { current: 0, total: files.length, percent: 0 };
+    let successCount = 0;
+
+    for (const [index, file] of files.entries()) {
+        uploadProgress.value.current = index + 1;
+        uploadProgress.value.percent = 0;
+
+        if (file.size > MAX_UPLOAD_SIZE) {
+            $message.error(`${file.name} 超过 100MB 大小限制`);
+            continue;
+        }
+        if (storageInfo.value.availableSize > 0 && file.size > storageInfo.value.availableSize) {
+            $message.error('云盘可用空间不足');
+            break;
+        }
+
+        try {
+            const response = await uploadFile(file);
+            if (response?.status === 1) {
+                successCount++;
+                uploadProgress.value.percent = 100;
+            } else {
+                console.error('上传云盘失败:', response);
+                $message.error(`${file.name} 上传失败`);
+            }
+        } catch (error) {
+            console.error('上传云盘失败:', error);
+            const msg = error?.response?.data?.msg;
+            $message.error(`${file.name} 上传失败${msg ? `：${msg}` : ''}`);
+        }
+    }
+
+    isUploading.value = false;
+    if (successCount > 0) {
+        $message.success(`成功上传 ${successCount} 首歌曲`);
+        cacheBust = Date.now();
+        fetchCloudTracks();
+    }
+};
+
+// 滚动到当前播放歌曲
+const scrollToTrackIndex = async (index) => {
+    await nextTick();
+    const scrollContainer = document.querySelector('.app-main-scroll');
+    const scrollerElement = recycleScrollerRef.value?.$el;
+    if (!scrollContainer || !scrollerElement) return;
+
+    const targetIndex = Math.max(0, index - 5);
+    const itemSize = listMode.value === 'list' ? 50 : 70;
+    const offsetTop = scrollContainer.scrollTop + scrollerElement.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
+
+    scrollContainer.scrollTo({
+        top: Math.max(0, offsetTop + targetIndex * itemSize),
+        behavior: 'smooth'
+    });
+};
+
+const scrollToItem = async () => {
+    const currentHash = props.playerControl?.currentSong?.hash;
+    if (!currentHash) return;
+
+    let currentIndex = filteredTracks.value.findIndex(song => song.hash === currentHash);
+    if (currentIndex === -1 && hasMore.value && !searchQuery.value.trim()) {
+        try {
+            await loadAllRemainingTracks();
+            currentIndex = filteredTracks.value.findIndex(song => song.hash === currentHash);
+        } catch (error) {
+            console.error('scrollToItem failed:', error);
+        }
+    }
+
+    if (currentIndex !== -1) {
+        await scrollToTrackIndex(currentIndex);
+    }
 };
 
 const handleClickOutside = (event) => {
@@ -445,22 +714,46 @@ const appendSelectedToQueue = async () => {
     isBatchMenuVisible.value = false;
 };
 
+const deleteFilesFromCloud = async (fileids = []) => {
+    if(!fileids || !fileids.length) return;
+    return await get(`/user/cloud/del?fileid=${fileids.join(',')}`);
+}
+
 // 从云盘中删除选中的歌曲
 const deleteSelectedFromCloud = async () => {
     if (selectedTracks.value.length === 0) return;
     const result = await window.$modal.confirm(t('que-ren-shan-chu-yun-pan-ge-qu'));
     if (result) {
-        $message.info('删除功能正在开发中...');
-
-        // selectedTracks.value.sort((a, b) => b - a).forEach(index => {
-        //     filteredTracks.value.splice(index, 1);
-        //     tracks.value = tracks.value.filter((_, i) => 
-        //         !selectedTracks.value.includes(i)
-        //     );
-        // });
-        // filteredTracks.value = [...tracks.value];
-        // selectedTracks.value = [];
-        // $message.success(t('shan-chu-cheng-gong'));
+        const fileids = [], skipped = [];
+        selectedTracks.value.sort((a, b) => b - a).forEach(index => {
+            if(filteredTracks.value[index].fileid)
+                fileids.push(filteredTracks.value[index].fileid);
+            else
+                skipped.push(filteredTracks.value[index].name);
+            filteredTracks.value.splice(index, 1);
+            tracks.value = tracks.value.filter((_, i) => 
+                !selectedTracks.value.includes(i)
+            );
+        });
+        if(fileids.length) {
+            const res = await deleteFilesFromCloud(fileids);
+            if(!res.status) {
+                $modal.alert(`删除失败! 错误码: ${res.error_code}`);
+                return;
+            }
+            storageInfo.value = {
+                availableSize: res.data.availble_size,
+                usedSize: res.data.used_size,
+                totalSize: res.data.max_size
+            }
+        }
+        if(skipped.length) {
+            $modal.alert(`${t('shan-chu-cheng-gong')}, 部分已跳过, 请在官方 app 删除以下歌曲:\n${skipped.join('\n')}`);
+            return;
+        }
+        filteredTracks.value = [...tracks.value];
+        selectedTracks.value = [];
+        $message.success(t('shan-chu-cheng-gong'));
     }
     isBatchMenuVisible.value = false;
 };
@@ -475,7 +768,16 @@ const toggleSelectAll = () => {
 };
 
 // 根据字段排序
-const sortTracks = (field) => {
+const sortTracks = async (field) => {
+    if (hasMore.value) {
+        isSearching.value = true;
+        try {
+            await loadAllRemainingTracks();
+        } finally {
+            isSearching.value = false;
+        }
+    }
+
     if (sortField.value === field) {
         sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
     } else {
@@ -543,26 +845,49 @@ $shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
 .header {
     display: flex;
     align-items: center;
-    margin-bottom: 40px;
+}
+
+.detail-sliver-header {
+    position: sticky;
+    z-index: 116;
+    box-sizing: border-box;
+    overflow: visible;
+    align-items: flex-start;
+    padding: 10px 0;
+    background: #fff;
+    gap: 20px;
+}
+
+.detail-sliver-spacer {
+    pointer-events: none;
+    background: #fff;
 }
 
 .cover-art {
+    flex: 0 0 auto;
     width: 200px;
     height: 200px;
     border-radius: 10px;
-    margin-right: 20px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     object-fit: cover;
+    transition: box-shadow 0.2s ease;
 }
 
 .info {
-    max-width: 600px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    max-width: calc(100% - 110px);
 }
 
 .title {
+    flex: 0 0 auto;
     font-size: 36px;
     font-weight: bold;
-    width: 800px;
+    width: 100%;
+    line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -570,13 +895,41 @@ $shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
     color: $primary;
 }
 
+.expanded-info {
+    display: flex;
+    flex-direction: column;
+    transition: opacity 0.12s linear;
+}
+
+.collapsed-play-btn {
+    position: absolute;
+    top: 50%;
+    right: 18px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: $primary;
+    cursor: pointer;
+    font-size: 30px;
+    line-height: 1;
+    transition: color 0.2s ease, opacity 0.2s ease;
+
+    &:hover {
+        color: var(--color-primary);
+    }
+}
+
 .subtitle {
     font-size: 18px;
+    line-height: 1.35;
+    margin: 6px 0 0;
     color: $text-muted;
 }
 
 .storage-info {
-    margin: 10px 0;
+    margin: 8px 0;
     width: 100%;
     max-width: 600px;
 }
@@ -603,16 +956,15 @@ $shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .description {
-    white-space: pre-wrap;
-    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.45;
     color: var(--text-color);
-    margin-bottom: 20px;
+    margin: 0 0 12px;
     font-size: 16px;
-    max-height: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: break-spaces;
-    overflow-y: auto;
 }
 
 .actions {
@@ -622,7 +974,7 @@ $shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
 
 .primary-btn,
 .upload-btn {
-    background-color: #ff69b4;
+    background-color: $primary;
     color: $white;
     border: none;
     padding: 10px 20px;
@@ -638,23 +990,28 @@ $shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
 
 .upload-btn {
     background-color: #4caf50;
+
+    &.uploading {
+        opacity: 0.75;
+        cursor: not-allowed;
+    }
 }
 
 .track-list-container {
-    margin-top: 30px;
 }
 
 .track-list-header {
+    position: sticky;
+    z-index: 115;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    background: #fff;
 }
 
 .track-list-title {
     font-size: 24px;
     font-weight: bold;
-    margin-bottom: 10px;
     color: $primary;
 }
 
@@ -749,18 +1106,33 @@ $shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .track-list {
-    height: 800px;
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-    overflow: auto;
+    width: 100%;
+}
 
-    &::-webkit-scrollbar {
-        width: 8px !important;
-        display: block !important;
+.search-loading-overlay {
+    height: 800px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 150px;
+    border-radius: 0 0 5px 5px;
+}
+
+.search-loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    color: var(--text-color);
+
+    i {
+        font-size: 48px;
+        color: $primary;
     }
 
-    &:hover {
-        scrollbar-color: $primary transparent;
+    span {
+        font-size: 16px;
+        color: $text-muted;
     }
 }
 
@@ -939,20 +1311,10 @@ $shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
     position: fixed;
     bottom: 168px;
     right: 14px;
-    z-index: 1;
+    z-index: 110;
     cursor: pointer;
-    font-size: 37px;
+    font-size: 20px;
     color: $primary;
-}
-
-.scroll-bottom-img {
-    position: fixed;
-    width: 60px;
-    height: 60px;
-    bottom: 110px;
-    right: 88px;
-    z-index: 1;
-    cursor: pointer;
 }
 
 .more-btn-container {
@@ -1028,13 +1390,15 @@ $shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .track-list-header-row {
+    position: sticky;
+    z-index: 114;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 10px;
+    background: #fff;
     border-bottom: 1px solid $primary;
     font-weight: bold;
-    border-radius: 5px 5px 0 0;
 }
 
 .track-checkbox-header {

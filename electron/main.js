@@ -1,4 +1,4 @@
-import { app, ipcMain, globalShortcut, dialog, Notification, shell, session, powerSaveBlocker, nativeImage } from 'electron';
+import { app, ipcMain, globalShortcut, dialog, Notification, shell, session, powerSaveBlocker, nativeImage, screen } from 'electron';
 import {
     createWindow, createTray, createTouchBar, startApiServer,
     stopApiServer, registerShortcut,
@@ -124,12 +124,15 @@ app.on('before-quit', () => {
     }
 
     // 清理状态栏歌词服务
-    statusBarLyricsService.cleanup();
-    customTrayMenuService.cleanup();
+    setImmediate(() => {
+        statusBarLyricsService.cleanup();
+        customTrayMenuService.cleanup();
 
-    stopApiServer();
-    apiService.stop();
-    cleanupExtensions();
+        stopApiServer();
+        apiService.stop();
+        cleanupExtensions();
+        app.exit(0);
+    });
 });
 // 关闭所有窗口
 app.on('window-all-closed', () => {
@@ -212,7 +215,7 @@ ipcMain.on('custom-shortcut', (event) => {
 
 ipcMain.on('lyrics-data', (event, lyricsData) => {
     const lyricsWindow = mainWindow?.lyricsWindow;
-    if (lyricsWindow) {
+    if (lyricsWindow && !lyricsWindow.isDestroyed()) {
         lyricsWindow.webContents.send('lyrics-data', lyricsData);
     }
 
@@ -272,11 +275,39 @@ ipcMain.on('set-ignore-mouse-events', (event, ignore) => {
     }
 });
 
-ipcMain.on('window-drag', (event, { mouseX, mouseY }) => {
+ipcMain.on('window-drag', (event, { x, y, width, height }) => {
     const lyricsWindow = mainWindow.lyricsWindow;
     if (!lyricsWindow) return
-    lyricsWindow.setPosition(mouseX, mouseY)
-    store.set('lyricsWindowPosition', { x: mouseX, y: mouseY });
+    const bounds = lyricsWindow.getBounds();
+    const nextBounds = {
+        x: Math.round(x ?? bounds.x),
+        y: Math.round(y ?? bounds.y),
+        width: Math.round(width ?? bounds.width),
+        height: Math.round(height ?? bounds.height)
+    };
+    lyricsWindow.setBounds(nextBounds)
+    store.set('lyricsWindowPosition', { x: nextBounds.x, y: nextBounds.y });
+    store.set('lyricsWindowSize', { width: nextBounds.width, height: nextBounds.height });
+})
+
+ipcMain.on('lyrics-window-fixed-size', (event, { width, height, fixed }) => {
+    const lyricsWindow = mainWindow.lyricsWindow;
+    if (!lyricsWindow) return
+    if (fixed) {
+        lyricsWindow.setMaximumSize(Math.round(width), Math.round(height));
+        return
+    }
+    const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
+    lyricsWindow.setMaximumSize(screenWidth, screenHeight);
+})
+
+ipcMain.handle('lyrics-window-pointer-state', () => {
+    const lyricsWindow = mainWindow.lyricsWindow;
+    if (!lyricsWindow) return null
+    return {
+        cursor: screen.getCursorScreenPoint(),
+        bounds: lyricsWindow.getBounds()
+    };
 })
 
 ipcMain.on('play-pause-action', (event, playing, currentTime) => {
@@ -296,7 +327,6 @@ ipcMain.on('open-url', (event, url) => {
 ipcMain.on('set-tray-title', (event, title) => {
     createTray(mainWindow, t('now-playing') + title);
     mainWindow.setTitle(title);
-    void customTrayMenuService.refresh();
 })
 
 
